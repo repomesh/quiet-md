@@ -34,7 +34,8 @@ fn pc_binding(binding: KeyBinding) -> Option<KeyBinding> {
     if matches!(keys.as_str(), "ctrl-a" | "ctrl-b" | "ctrl-d" | "ctrl-e" | "ctrl-f" | "ctrl-h" | "ctrl-n" | "ctrl-p" | "ctrl-backspace") { return None; }
     // Ctrl+Backspace deletes a word on PC platforms; do not override it with macOS line deletion.
     if keys == "cmd-backspace" { return None; }
-    let keys = if binding.action().name().ends_with("::InlineCode") { "ctrl-shift-c".to_string() } else { keys.split(' ').map(|key| match key {
+    // Ctrl+Shift+C is 行内代码 there, so 复制为 Markdown takes Alt as well.
+    let keys = if binding.action().name().ends_with("::InlineCode") { "ctrl-shift-c".to_string() } else if binding.action().name().ends_with("::CopyMarkdown") { "ctrl-alt-shift-c".to_string() } else { keys.split(' ').map(|key| match key {
         "cmd-left" => "home".into(), "cmd-right" => "end".into(),
         "cmd-shift-left" => "shift-home".into(), "cmd-shift-right" => "shift-end".into(),
         "cmd-up" => "ctrl-home".into(), "cmd-down" => "ctrl-end".into(),
@@ -197,6 +198,7 @@ fn info(name: &str) -> Option<(usize, &'static str, &'static str)> {
         "Undo" => (2, "撤销", "Undo"),
         "Redo" => (2, "重做", "Redo"),
         "Copy" => (2, "复制", "Copy"),
+        "CopyMarkdown" => (2, "复制为 Markdown", "Copy as Markdown"),
         "Cut" => (2, "剪切", "Cut"),
         "Paste" => (2, "粘贴", "Paste"),
         "SelectAll" => (2, "全选", "Select all"),

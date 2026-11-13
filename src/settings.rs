@@ -1231,6 +1231,8 @@ pub(crate) fn localize(text: &str, english: bool) -> &str {
         "下载为" => "Download as",
         "打印" => "Print",
         "显示引用列表" => "Show references",
+        "复制为 Markdown" => "Copy as Markdown",
+        "已复制为 Markdown" => "Copied as Markdown",
         "为当前窗口选择合适页宽" => "Choose a page width for this window",
         "默认" => "Default",
         "较宽" => "Wide",

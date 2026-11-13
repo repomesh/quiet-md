@@ -70,6 +70,7 @@ pub fn set_menus(cx: &mut App) {
                     MenuItem::separator(),
                     MenuItem::os_action(tr("剪切", "Cut"), k::Cut, OsAction::Cut),
                     MenuItem::os_action(tr("拷贝", "Copy"), k::Copy, OsAction::Copy),
+                    MenuItem::action(tr("拷贝为 Markdown", "Copy as Markdown"), k::CopyMarkdown),
                     MenuItem::os_action(tr("粘贴", "Paste"), k::Paste, OsAction::Paste),
                     MenuItem::os_action(tr("全选", "Select All"), k::SelectAll, OsAction::SelectAll),
                 ]

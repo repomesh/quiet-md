@@ -734,4 +734,7 @@ pub(super) const STRINGS: &[(&str, &str)] = &[
     ("。", "。"),
     ("{n} 字", "{n} 文字"),
     ("已有同名文件：{}", "同じ名前のファイルがすでにあります：{}"),
+    ("复制为 Markdown", "Markdown としてコピー"),
+    ("拷贝为 Markdown", "Markdown としてコピー"),
+    ("已复制为 Markdown", "Markdown としてコピーしました"),
 ];

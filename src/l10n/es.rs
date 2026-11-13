@@ -732,4 +732,7 @@ pub(super) const STRINGS: &[(&str, &str)] = &[
     ("本周{w}", "Este {w}"),
     ("{n} 字", "{n} palabras"),
     ("已有同名文件：{}", "Ya existe un archivo con este nombre: {}"),
+    ("复制为 Markdown", "Copiar como Markdown"),
+    ("拷贝为 Markdown", "Copiar como Markdown"),
+    ("已复制为 Markdown", "Copiado como Markdown"),
 ];
