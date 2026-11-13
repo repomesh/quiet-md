@@ -156,6 +156,30 @@ pub fn quit(cx: &mut App) {
     }
 }
 
+/// 更改文档库: open documents are saved first (as for 退出), the folder is
+/// set up as a library if it isn't one, the current preferences go with
+/// it when it has none, and the app restarts into it. The old library
+/// stays where it is. Call it outside any window update (`cx.defer`).
+pub fn switch_library(root: std::path::PathBuf, cx: &mut App) {
+    let ready = cx
+        .windows()
+        .into_iter()
+        .filter_map(|w| w.downcast::<Workspace>())
+        .map(|w| { let again = root.clone(); w.update(cx, |ws, _, cx| ws.save_before(cx, move |_, _, cx| cx.defer(move |cx| switch_library(again, cx)))).unwrap_or(false) })
+        .fold(true, |ready, saved| ready & saved);
+    if !ready { return }
+    let prefs = crate::store::Store::internal_dir().join("preferences.json");
+    let set = crate::guides::initialize(&root).and_then(|_| crate::store::Store::set_root_dir(root.clone()));
+    if let Err(e) = set {
+        let msg = format!("{}{e}", crate::settings::tr("无法在这里创建文档库：", "Couldn't create the library here: "));
+        if let Some(ws) = cx.windows().into_iter().find_map(|w| w.downcast::<Workspace>()) { let _ = ws.update(cx, |w, _, cx| w.show_toast(&msg, cx)); }
+        return;
+    }
+    let mine = crate::store::Store::internal_dir().join("preferences.json");
+    if !mine.exists() { let _ = std::fs::create_dir_all(mine.parent().unwrap()).and_then(|_| std::fs::copy(&prefs, &mine)); }
+    cx.restart();
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum SaveStatus {
     /// Freshly opened, nothing saved this session: show the modification time.
@@ -207,6 +231,8 @@ pub enum Confirm {
     /// The library should move to real folders, and the user is asked first
     /// (it is synced, or used from another computer): 改用文件夹 / 稍后.
     Migrate(crate::store::ConsentReason),
+    /// 设置 › 文档库 › 更改…: open this folder as the library (#94), after a restart.
+    SwitchLibrary(std::path::PathBuf),
 }
 
 /// What to do once the open document is safely on disk (or its changes given up).

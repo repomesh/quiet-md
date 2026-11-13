@@ -322,7 +322,7 @@ fn short_path(p: &Path) -> String {
 
 /// A picked folder as a library: an existing one or an empty folder is used
 /// as it is; anything else gets a Quiet.md folder inside.
-fn library_in(dir: PathBuf) -> PathBuf {
+pub(crate) fn library_in(dir: PathBuf) -> PathBuf {
     let empty = std::fs::read_dir(&dir).map(|mut r| r.all(|e| e.is_ok_and(|e| e.file_name().to_string_lossy().starts_with('.')))).unwrap_or(true);
     if crate::store::Store::is_library(&dir) || empty { dir } else { dir.join("Quiet.md") }
 }

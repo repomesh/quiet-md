@@ -341,6 +341,12 @@ impl Workspace {
                     false,
                 )
             }
+            Confirm::SwitchLibrary(root) => (
+                crate::settings::tr("换用这个文档库？", "Switch to this library?").to_string(),
+                crate::localized_format!("Quiet.md 会保存当前文档并重启，然后打开 {}。原来的文档库留在原处，不会移动或删除，之后可以再换回来。", "Quiet.md saves the open document, restarts and opens {}. The current library stays where it is, nothing is moved or deleted, and you can switch back later.", root.display()),
+                crate::settings::tr("切换并重启", "Switch and Restart"),
+                false,
+            ),
             Confirm::SaveFailed => (
                 crate::settings::text("文档保存失败").to_string(),
                 crate::localized_format!("{}。可以重试或另存副本；重新载入将放弃未保存的修改并载入磁盘内容。", "{}. Retry or save a copy. Reload discards unsaved changes and loads the document from disk.", self.save_error()),
@@ -355,7 +361,7 @@ impl Workspace {
         let ok = primary_button("confirm-ok", action);
         let ok = if danger { ok.bg(Theme::danger()).hover(|s| s.bg(theme::c(craft::R600))).active(|s| s.bg(theme::c(craft::R700))) } else { ok };
         let dialog = dialog("confirm-dialog")
-            .w(px(if matches!(c, Confirm::SaveFailed | Confirm::Migrate(_)) { 520. } else { 400. }))
+            .w(px(if matches!(c, Confirm::SaveFailed | Confirm::Migrate(_) | Confirm::SwitchLibrary(_)) { 520. } else { 400. }))
             .px(px(24.))
             .pt(px(20.))
             .pb(px(24.))
@@ -423,6 +429,7 @@ impl Workspace {
                             }
                             Confirm::SaveFailed => w.resolve_save_failed(true, window, cx),
                             Confirm::Migrate(_) => w.migrate_library(window, cx),
+                            Confirm::SwitchLibrary(root) => cx.defer(move |cx| crate::app::switch_library(root, cx)),
                         }
                         cx.notify();
                     }))),

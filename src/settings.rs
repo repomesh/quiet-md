@@ -962,12 +962,28 @@ impl Workspace {
         } else { tr("在文件管理器中显示", "Show in File Manager") };
         div().w_full().flex().flex_col().gap(px(8.))
             .child(group(None, vec![
-                row(tr("文档库文件夹", "Documents folder"), Some(location.into()),
-                    button("reveal-library", reveal).on_click(|_, _, cx| cx.reveal_path(&crate::store::Store::root_dir()))).into_any_element(),
+                row(tr("文档库文件夹", "Documents folder"), Some(location.into()), div().flex_none().flex().gap(px(8.))
+                    .child(button("reveal-library", reveal).on_click(|_, _, cx| cx.reveal_path(&crate::store::Store::root_dir())))
+                    // A test run's library (`QUIET_MD_HOME`) is fixed: a restart would lose it.
+                    .when(std::env::var_os("QUIET_MD_HOME").is_none(), |d| d.child(button("change-library", tr("更改…", "Change…")).on_click(cx.listener(|w, _, _, cx| w.pick_library(cx)))))).into_any_element(),
                 row(tr("回收站", "Trash"), Some(crate::localized_format!("删除的文档保留 {} 天后自动清除。", "Deleted documents are kept for {} days.", crate::store::TRASH_DAYS).into()),
                     button("open-trash", tr("打开", "Open")).on_click(cx.listener(|w, _, _, cx| w.show_view(View::Trash, cx)))).into_any_element(),
             ]))
             .into_any_element()
+    }
+
+    /// 更改…: a folder picked as the next library; `library_in` decides
+    /// whether it is used as it is or gets a Quiet.md folder inside.
+    fn pick_library(&mut self, cx: &mut Context<Self>) {
+        let picked = crate::devtools::take_pick();
+        let prompt = picked.is_none().then(|| cx.prompt_for_paths(PathPromptOptions { files: false, directories: true, multiple: false, prompt: Some(tr("选择", "Choose").into()), extensions: None }));
+        cx.spawn(async move |this, cx| {
+            let paths = match prompt { Some(p) => p.await.ok().and_then(Result::ok).flatten(), None => picked };
+            let Some(dir) = paths.and_then(|p| p.into_iter().next()) else { return };
+            let root = crate::onboarding::library_in(dir);
+            if root == crate::store::Store::root_dir() { return }
+            let _ = this.update(cx, |w, cx| { w.confirm = Some(crate::app::Confirm::SwitchLibrary(root)); cx.notify(); });
+        }).detach();
     }
 
     fn about_page(&self, cx: &mut Context<Self>) -> AnyElement {
