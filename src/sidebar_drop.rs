@@ -92,10 +92,14 @@ impl Workspace {
         let parent = target.parent.clone();
         self.landed_in(parent.as_deref());
         if !files.is_empty() { self.import_paths(&files, parent.clone(), false, window, cx); }
-        for dir in &dirs { self.import_folder(dir, parent.clone(), false, window, cx); }
         // Into the slot it showed: what came in at this level goes before the row below it.
         let new: Vec<String> = self.entries.iter().filter(|e| !known.contains(&e.id) && e.meta.parent == parent).map(|e| e.id.clone()).collect();
         self.place_dropped(&new, &target);
+        // Folders come in off the window's thread; each takes its slot once it is in.
+        for dir in &dirs {
+            let target = target.clone();
+            self.import_folder_then(dir, parent.clone(), false, Some(Box::new(move |w, id| w.place_dropped(&[id.to_string()], &target))), window, cx);
+        }
         cx.notify();
     }
 
@@ -123,11 +127,14 @@ impl Workspace {
 
     /// Put what a drop brought in into the slot it showed (a folder row: as imported).
     fn place_dropped(&mut self, ids: &[String], target: &SidebarDropAt) {
+        let journal = self.store.track_file_changes();
         if target.slot.is_some() {
             for id in ids { let _ = self.store.with(|s| s.move_in_tree(id, target.parent.as_deref(), target.before.as_deref())); }
         }
         self.entries = self.store.list();
         self.sort();
+        // Part of the import: undo checks every place it recorded.
+        self.amend_file_record(ids, journal.take());
     }
 
     /// The folder that took a drop opens and bounces.

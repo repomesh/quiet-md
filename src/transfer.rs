@@ -30,6 +30,12 @@ pub(crate) const IMPORT_FOLDER_LIMIT: usize = 2000;
 /// Bigger files are not documents.
 const IMPORT_FILE_LIMIT: u64 = 32 * 1024 * 1024;
 
+/// What to do with a folder 导入文件夹 brought in (a drop puts it in its slot).
+pub(crate) type AfterImport = Box<dyn FnOnce(&mut Workspace, &str)>;
+
+/// What a background 导入文件夹 did.
+enum Imported { Empty, TooMany(usize), Done { top: Option<String>, failed: usize, saved: anyhow::Result<()>, changes: Vec<crate::store::FileDelta> } }
+
 /// A folder to import: its documents and the sub-folders that hold some.
 pub(crate) struct Scanned { name: String, dir: PathBuf, dirs: Vec<Scanned>, docs: Vec<PathBuf>, pub(crate) files: usize }
 
@@ -83,6 +89,9 @@ fn tree(store: &mut crate::store::Store, t: &Scanned, root: &Path, parent: Optio
         Ok(id) => id,
         Err(_) => { *failed += t.files; return None; }
     };
+    // In the folder's order, as its documents are: made together, unplaced
+    // folders would fall back to random ids.
+    if parent.is_some() { let _ = store.set_parent(&id, parent); }
     for sub in &t.dirs { tree(store, sub, root, Some(&id), failed); }
     for p in &t.docs {
         let made = if crate::local_files::is_markdown_path(p) { import_markdown(store, p, Some(root), Some(&id)) } else { store.import_into(p, Some(&id)) };
@@ -510,31 +519,59 @@ impl Workspace {
 
     /// Import `dir` as a folder inside `parent` (None: the top of 我的文档).
     pub(crate) fn import_folder(&mut self, dir: &Path, parent: Option<String>, open: bool, window: &mut Window, cx: &mut Context<Self>) {
-        let (again, retry) = (dir.to_path_buf(), parent.clone());
-        if !self.save_before(cx, move |w, window, cx| w.import_folder(&again, retry.clone(), open, window, cx)) {
+        self.import_folder_then(dir, parent, open, None, window, cx);
+    }
+
+    /// `import_folder`, then `then` with the new folder once it is in.
+    pub(crate) fn import_folder_then(&mut self, dir: &Path, parent: Option<String>, open: bool, then: Option<AfterImport>, window: &mut Window, cx: &mut Context<Self>) {
+        let held = std::rc::Rc::new(std::cell::Cell::new(then));
+        let (again, retry, later) = (dir.to_path_buf(), parent.clone(), held.clone());
+        if !self.save_before(cx, move |w, window, cx| w.import_folder_then(&again, retry.clone(), open, later.take(), window, cx)) {
             return;
         }
-        let tree = scan_folder(dir, 0);
-        let Some(tree) = tree.filter(|t| t.files > 0) else {
-            self.show_toast_kind(ToastKind::Error, crate::settings::tr("这个文件夹里没有 Markdown 或 XML 文件", "This folder has no Markdown or XML files"), cx);
-            return;
+        let then = held.take();
+        // Scanning and writing hundreds of files takes seconds (an fsync each),
+        // so it runs on its own store off the window's thread; the library
+        // lock keeps it one write, as `tree_writer` does for drags.
+        let mut writer = self.store.tree_writer();
+        let dir = dir.to_path_buf();
+        let task = cx.background_executor().spawn(async move {
+            let Some(tree) = scan_folder(&dir, 0).filter(|t| t.files > 0) else { return Imported::Empty };
+            if tree.files > IMPORT_FOLDER_LIMIT { return Imported::TooMany(tree.files); }
+            let journal = writer.track_file_changes();
+            let mut failed = 0;
+            // One write for the whole folder: each file is written where it
+            // goes and the index once at the end (120 notes took 7 s one by one).
+            // Without the batch each file is still written on its own.
+            let batch = writer.begin_batch().is_ok();
+            let top = import_tree(&mut writer, &tree, parent.as_deref(), &mut failed);
+            let saved = if batch { writer.end_batch() } else { Ok(()) };
+            Imported::Done { top, failed, saved, changes: journal.take() }
+        });
+        self.show_toast_kind(ToastKind::Info, crate::settings::tr("正在导入…", "Importing…"), cx);
+        cx.spawn_in(window, async move |this, cx| {
+            let imported = task.await;
+            let _ = this.update_in(cx, |w, window, cx| w.finish_import_folder(imported, open, then, window, cx));
+        }).detach();
+    }
+
+    fn finish_import_folder(&mut self, imported: Imported, open: bool, then: Option<AfterImport>, window: &mut Window, cx: &mut Context<Self>) {
+        let (top, failed, saved, changes) = match imported {
+            Imported::Empty => {
+                self.show_toast_kind(ToastKind::Error, crate::settings::tr("这个文件夹里没有 Markdown 或 XML 文件", "This folder has no Markdown or XML files"), cx);
+                return;
+            }
+            Imported::TooMany(files) => {
+                self.show_toast_kind(ToastKind::Error, &crate::localized_format!("文件夹里有 {} 个文件，一次最多导入 {} 个", "The folder has {} files; up to {} can be imported at once", files, IMPORT_FOLDER_LIMIT), cx);
+                return;
+            }
+            Imported::Done { top, failed, saved, changes } => (top, failed, saved, changes),
         };
-        if tree.files > IMPORT_FOLDER_LIMIT {
-            self.show_toast_kind(ToastKind::Error, &crate::localized_format!("文件夹里有 {} 个文件，一次最多导入 {} 个", "The folder has {} files; up to {} can be imported at once", tree.files, IMPORT_FOLDER_LIMIT), cx);
-            return;
-        }
-        let file_before = self.store.track_file_changes();
-        let mut failed = 0;
-        // One write for the whole folder: each file is written where it
-        // goes and the index once at the end (120 notes took 7 s one by one).
-        // Without the batch each file is still written on its own.
-        let batch = self.store.begin_batch().is_ok();
-        let top = self.store.with(|s| import_tree(s, &tree, parent.as_deref(), &mut failed));
-        let saved = if batch { self.store.end_batch() } else { Ok(()) };
-        self.remember_files(file_before, crate::settings::tr("导入文件夹", "Import folder"));
         self.entries = self.store.list();
         self.sort();
+        self.remember_file_changes(changes, crate::settings::tr("导入文件夹", "Import folder"));
         if let Some(id) = top {
+            if let Some(then) = then { then(self, &id); }
             self.reveal_in_tree(&id);
             if open { self.open(&id, window, cx); }
         }
@@ -542,6 +579,8 @@ impl Workspace {
             self.show_toast_kind(ToastKind::Error, &crate::localized_format!("导入未能完成：{}", "Import could not finish: {}", crate::settings::diagnostic(&e.to_string())), cx);
         } else if failed > 0 {
             self.show_toast_kind(ToastKind::Error, &crate::localized_format!("有 {failed} 个文件未能导入", "{failed} files could not be imported"), cx);
+        } else if self.toast.as_ref().is_some_and(|t| matches!(t.0, ToastKind::Info) && t.1.as_ref() == crate::settings::tr("正在导入…", "Importing…")) {
+            self.toast = None;
         }
         cx.notify();
     }
