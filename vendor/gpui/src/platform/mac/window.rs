@@ -1488,6 +1488,15 @@ impl PlatformWindow for MacWindow {
         this.renderer.draw(scene);
     }
 
+    fn draw_in_transaction(&self, scene: &crate::Scene) {
+        let mut this = self.0.lock();
+        #[cfg(not(feature = "macos-blade"))]
+        this.renderer.set_presents_with_transaction(true);
+        this.renderer.draw(scene);
+        #[cfg(not(feature = "macos-blade"))]
+        this.renderer.set_presents_with_transaction(false);
+    }
+
     fn render_to_bgra(&self, scene: &crate::Scene) -> Option<(usize, usize, Vec<u8>)> {
         self.0.lock().renderer.render_to_bgra(scene)
     }

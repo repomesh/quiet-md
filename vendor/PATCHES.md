@@ -47,6 +47,7 @@ diff -ru $R/taffy-0.9.0/src vendor/taffy/src
 | 26 | `window.rs` | `Window::replace_root` 同时更新窗口句柄记录的根视图类型（`handle.state_type` 和 `App::window_handles` 里那一份） | 首次启动的引导页走完后，在同一个窗口里换成主界面；原来换了根视图后 `downcast::<新类型>()` 仍然失败，按主界面找窗口的地方找不到它 |
 
 | 27 | `platform.rs`、`platform/mac/window.rs`、`platform/windows/window.rs`、`window.rs` | `Window::set_window_min_size`：创建后改窗口最小内容尺寸（macOS `setContentMinSize`，Windows 改 `WM_GETMINMAXINFO` 用的 `min_size`；其他平台不变） | 最小宽度 = 文档区最小宽度 + 侧栏宽度，随侧栏开合和拖宽变化 |
+| 28 | `platform.rs`、`platform/mac/window.rs`、`window.rs` | `Window::present_next_frame_in_transaction`：下一帧走 `PlatformWindow::draw_in_transaction`，macOS 上这一帧 `presentsWithTransaction`，和渲染期间改的原生视图在同一个 Core Animation 事务里上屏；其他平台照常 `draw` | 侧栏玻璃（`NSGlassEffectView`）大小或显隐变化的那一帧和 GPUI 画面同时出现；原来画面异步上屏、晚一个刷新，开关侧栏时玻璃先没（先出来），看着像顿了一下 |
 
 ## taffy 0.9.0
 
