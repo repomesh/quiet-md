@@ -100,7 +100,7 @@ A 120 Hz display gives each frame 8.3 ms. Even at P95 on a million-character doc
 
 - **Editing**: headings, ordered and bulleted lists, to-dos, quotes, code blocks with syntax highlighting, LaTeX math, tables (with merged cells), callouts, columns, images, attachments and covers. Markdown shortcuts such as `#`, `-`, `[]` and `>`, plus a `/` slash menu.
 - **Organizing**: a document tree, pinning, favorites, full-text search and a trash.
-- **Import and export**: import Markdown folders (Obsidian picture embeds and callouts included) and Feishu (Lark) DocxXML; export Markdown and PDF, or print directly. Pasting from Feishu or a web page keeps the structure.
+- **Import and export**: import Markdown folders (Obsidian picture embeds and callouts included) and Feishu (Lark) DocxXML; export Markdown and PDF, or print directly. Drag files from Finder onto Home or straight into a sidebar folder. Pasting from Feishu or a web page keeps the structure.
 - **Shortcuts**: press `⌘ /` (`Ctrl+/` on Windows) to see them all. Every one can be rebound. On Windows, Ctrl stands in for ⌘ and Alt for ⌥; the app and the Getting started guides show the keys for your system.
 - **Themes**: four built-in styles — Craft, Feishu, Notion and Obsidian — each with a dark variant, or write your own in CSS; see [docs/THEMES.md](docs/THEMES.md).
 
@@ -112,6 +112,7 @@ Thanks to everyone who has helped build Quiet.md. Issues and pull requests are w
 
 ## Recent updates
 
+- **0.1.12** (Nov 14): drag files from Finder, or a file from Files on this computer, straight into a sidebar folder or between rows; the whole page lights up as a drop target. Redesigned Home cards with squircle corners, an Open in Finder menu, breadcrumbs that start at My documents, a minimum window width that keeps room for the note, and a solid sidebar in full screen. Fixes a hang when creating a document in a folder.
 - **0.1.11** (Nov 13): the library is now real folders, with files named by title; older libraries move over automatically, with a backup. A new first launch that sets the language, library location and quick-note shortcut and imports notes from Obsidian and other Markdown apps. Japanese, Spanish and Korean interfaces; display math in Markdown; documents reopen where you left off; faster launch and lower memory use.
 - **0.1.10** (Nov 10): choose a document type from the New menu, scroll wide tables horizontally, preserve Markdown column alignment, and keep the caret visible in long fields.
 - **0.1.9** (Nov 8): fix Cmd+Q on macOS, unresponsive window controls on Windows, and text selection hidden by highlight colors.

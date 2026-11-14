@@ -100,7 +100,7 @@ Una pantalla de 120 Hz da 8.3 ms a cada fotograma. Incluso en el P95 de un docum
 
 - **Edición**: títulos, listas numeradas y con viñetas, tareas, citas, bloques de código con resaltado de sintaxis, ecuaciones LaTeX, tablas (con celdas combinadas), destacados, columnas, imágenes, adjuntos y portadas. Atajos de Markdown como `#`, `-`, `[]` y `>`, y un menú `/`.
 - **Organización**: árbol de documentos, fijados, favoritos, búsqueda en todo el texto y papelera.
-- **Importar y exportar**: importa carpetas de Markdown (con las imágenes incrustadas y los callouts de Obsidian) y DocxXML de Feishu (Lark); exporta a Markdown y PDF, o imprime directamente. Al pegar desde Feishu o una página web se conserva la estructura.
+- **Importar y exportar**: importa carpetas de Markdown (con las imágenes incrustadas y los callouts de Obsidian) y DocxXML de Feishu (Lark); exporta a Markdown y PDF, o imprime directamente. Arrastra archivos desde el Finder a Inicio o directamente a una carpeta de la barra lateral. Al pegar desde Feishu o una página web se conserva la estructura.
 - **Atajos**: pulsa `⌘ /` (`Ctrl+/` en Windows) para verlos todos. Todos se pueden reasignar. En Windows, Ctrl sustituye a ⌘ y Alt a ⌥; la app y las guías Getting started muestran las teclas de tu sistema.
 - **Temas**: cuatro estilos integrados (Craft, Feishu, Notion y Obsidian), cada uno con su variante oscura, o escribe el tuyo en CSS; consulta [docs/THEMES.md](docs/THEMES.md).
 
@@ -112,6 +112,7 @@ Gracias a todas las personas que han ayudado a construir Quiet.md. Los issues y 
 
 ## Novedades recientes
 
+- **0.1.12** (14 nov): arrastra archivos desde el Finder, o desde Archivos de este ordenador, directamente a una carpeta de la barra lateral o entre filas; toda la página se ilumina como zona para soltar. Tarjetas de Inicio con esquinas continuas, el menú Abrir en el Finder, rutas que empiezan en Mis documentos, un ancho mínimo de ventana que deja sitio a la nota y una barra lateral opaca en pantalla completa. Corrige un bloqueo al crear un documento dentro de una carpeta.
 - **0.1.11** (13 nov): la biblioteca pasa a ser carpetas reales, con archivos nombrados por su título; las bibliotecas anteriores se trasladan solas, con copia de seguridad. Un nuevo primer arranque para elegir idioma, ubicación de la biblioteca y atajo de notas rápidas, e importar notas de Obsidian y otras apps de Markdown. Interfaz en japonés, español y coreano; fórmulas en bloque en Markdown; los documentos se abren donde los dejaste; arranque más rápido y menos memoria.
 - **0.1.10** (10 nov): elige el tipo de documento en el menú **Nuevo**, desplaza las tablas anchas en horizontal, conserva la alineación de columnas de Markdown y mantén visible el cursor en los campos largos.
 - **0.1.9** (8 nov): corrige Cmd+Q en macOS, los botones de ventana que no respondían en Windows y la selección de texto oculta por los colores de resaltado.
