@@ -253,11 +253,18 @@ fn discover(library: PathBuf) -> Vec<Found> {
         let mut budget = 20_000;
         let count = count_md(&path, 6, &mut budget);
         if count == 0 { continue }
-        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let name = found_name(app, &path, &mobile);
         out.push(Found { app, name, path, count });
     }
     out.sort_by_key(|a| std::cmp::Reverse(a.count));
     out
+}
+
+/// The name a found folder shows and is imported under: its own, except an
+/// app's iCloud folder, which is just "Documents" and goes by the app's name.
+fn found_name(app: &str, path: &Path, mobile: &Path) -> String {
+    if path.starts_with(mobile) && path.file_name().is_some_and(|n| n == "Documents") { return app.to_string() }
+    path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
 }
 
 // ---- syncing
@@ -512,10 +519,11 @@ impl Onboarding {
         cx.notify();
     }
 
-    fn imports(&self) -> Vec<PathBuf> {
-        let mut out = self.picked.clone();
+    /// Each folder to import, and the name it takes in the library.
+    fn imports(&self) -> Vec<(PathBuf, Option<String>)> {
+        let mut out: Vec<_> = self.picked.iter().map(|p| (p.clone(), None)).collect();
         if let Some(found) = &self.found {
-            out.extend(found.iter().zip(&self.chosen).filter(|(_, on)| **on).map(|(f, _)| f.path.clone()));
+            out.extend(found.iter().zip(&self.chosen).filter(|(_, on)| **on).map(|(f, _)| (f.path.clone(), Some(f.name.clone()))));
         }
         out
     }
@@ -664,7 +672,7 @@ impl Onboarding {
             let shown = if self.show_all || found.len() <= FOUND_SHOWN + 1 { found.len() } else { FOUND_SHOWN };
             let mut rows: Vec<AnyElement> = found.iter().take(shown).enumerate().map(|(i, f)| {
                 let on = self.chosen.get(i).copied().unwrap_or(false);
-                let title = if f.app == "Markdown" { f.name.clone() } else { format!("{} · {}", f.app, f.name) };
+                let title = if f.app == "Markdown" || f.name == f.app { f.name.clone() } else { format!("{} · {}", f.app, f.name) };
                 let desc = crate::localized_format!("{} · {} 篇 Markdown", "{} · {} Markdown files", where_short(&f.path), f.count);
                 div().id(("onb-found", i)).cursor_pointer().hover(|s| s.bg(Theme::fill_hover()))
                     .on_click(cx.listener(move |w, _, _, cx| { if let Some(c) = w.chosen.get_mut(i) { *c = !*c; } cx.notify(); }))
@@ -726,13 +734,16 @@ impl Onboarding {
 
 /// Copy each folder into the library (one write for all of them); what went
 /// wrong, for a toast in the main window.
-fn import_all(dirs: &[PathBuf]) -> Option<String> {
+fn import_all(dirs: &[(PathBuf, Option<String>)]) -> Option<String> {
     let mut store = match crate::store::Store::open() { Ok(s) => s, Err(e) => return Some(e.to_string()) };
     let (mut failed, batch) = (0, store.begin_batch().is_ok());
-    for dir in dirs {
+    for (dir, name) in dirs {
         match crate::transfer::scan_folder(dir, 0) {
             Some(t) if t.files > crate::transfer::IMPORT_FOLDER_LIMIT => failed += t.files,
-            Some(t) => { crate::transfer::import_tree(&mut store, &t, None, &mut failed); }
+            Some(mut t) => {
+                if let Some(n) = name { t.name = n.clone(); }
+                crate::transfer::import_tree(&mut store, &t, None, &mut failed);
+            }
             None => {}
         }
     }
@@ -875,5 +886,20 @@ impl Render for Onboarding {
             // The film alone: a click anywhere brings the pages now.
             .when(film_up, |d| d.child(div().id("onb-cut").absolute().inset_0().occlude().on_mouse_down(MouseButton::Left, cx.listener(|w, _, _, cx| { w.cut(cx); }))))
             .when(mark > 0., |d| d.child(film::wordmark(mark)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::found_name;
+    use std::path::Path;
+
+    #[test]
+    fn icloud_app_folders_go_by_the_app() {
+        let m = Path::new("/Users/me/Library/Mobile Documents");
+        assert_eq!(found_name("iA Writer", &m.join("27N4MQEA55~pro~writer/Documents"), m), "iA Writer");
+        assert_eq!(found_name("Typora", &m.join("iCloud~abnerworks~Typora/Documents"), m), "Typora");
+        assert_eq!(found_name("Obsidian", &m.join("iCloud~md~obsidian/Documents/Thesis"), m), "Thesis");
+        assert_eq!(found_name("Obsidian", Path::new("/Users/me/Documents"), m), "Documents");
     }
 }

@@ -37,7 +37,7 @@ pub(crate) type AfterImport = Box<dyn FnOnce(&mut Workspace, &str)>;
 enum Imported { Empty, TooMany(usize), Done { top: Option<String>, failed: usize, saved: anyhow::Result<()>, changes: Vec<crate::store::FileDelta> } }
 
 /// A folder to import: its documents and the sub-folders that hold some.
-pub(crate) struct Scanned { name: String, dir: PathBuf, dirs: Vec<Scanned>, docs: Vec<PathBuf>, pub(crate) files: usize }
+pub(crate) struct Scanned { pub(crate) name: String, dir: PathBuf, dirs: Vec<Scanned>, docs: Vec<PathBuf>, pub(crate) files: usize }
 
 /// Markdown and DocxXML files under `dir`, by name; hidden folders,
 /// dependency folders and symlinks are skipped.
