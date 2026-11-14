@@ -595,7 +595,8 @@ impl Core {
             if !out.is_empty() {
                 out.push('\n');
             }
-            out.push_str(&t.text[a.min(b)..b]);
+            // Equations as their LaTeX source (#69): copied text keeps them.
+            out.push_str(&t.slice(a.min(b)..b).plain_text());
         }
         out
     }
@@ -3924,6 +3925,16 @@ mod tests {
         c.delete_selected_blocks();
         assert_eq!(xml(&c), "<title>T</title>\n<p>d</p>\n");
         assert_eq!(c.sel.head, Pos::new(d, 0));
+    }
+
+    #[test]
+    fn selected_text_keeps_equations() {
+        let mut c = doc("<title>T</title><p>ab</p>");
+        let b = id(&c, 1);
+        c.sel = Selection::caret(Pos::new(b, 1));
+        let p = c.insert_equation("X_t").unwrap();
+        c.sel = Selection { anchor: Pos::new(b, 0), head: Pos::new(b, p.offset + EQUATION.len() + 1) };
+        assert_eq!(c.selected_text(), "aX_tb");
     }
 
     #[test]

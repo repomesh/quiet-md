@@ -27,6 +27,8 @@ pub struct Options<'a> {
     /// The file as it is on disk: blocks that did not change are written
     /// back exactly as they are there (with the blank lines between them).
     pub original: Option<&'a str>,
+    /// With `in_place` and no `base`: local sources as absolute paths (复制为 Markdown).
+    pub absolute: bool,
 }
 
 pub struct Export {
@@ -53,6 +55,20 @@ pub fn export(doc: &Document, opts: &Options) -> Export {
     out.truncate(trimmed);
     out.push('\n');
     Export { text: out, files: w.files, missing: w.missing }
+}
+
+/// 复制为 Markdown (#60): `blocks` (and the title, for a whole document) as
+/// Markdown text. Equations stay LaTeX; local images and attachments are
+/// linked by their absolute paths, nothing is copied.
+pub fn clipboard(title: Option<&str>, blocks: &[Block], library_root: &Path) -> String {
+    let opts = Options { in_place: true, absolute: true, library_root: Some(library_root), ..Default::default() };
+    let mut w = Writer { opts: &opts, files: vec![], missing: 0 };
+    let mut out = title.map(str::trim).filter(|t| !t.is_empty()).map(|t| format!("# {}\n\n", escape(t))).unwrap_or_default();
+    out.push_str(&w.blocks(blocks));
+    let trimmed = out.trim_end().len();
+    out.truncate(trimmed);
+    out.push('\n');
+    out
 }
 
 /// One top-level block as written, and the separator before it.
@@ -167,11 +183,12 @@ impl Writer<'_> {
         if src.contains("://") && !src.starts_with("file://") || src.starts_with("data:") {
             return src.to_string();
         }
-        let Some(base) = self.opts.base else { return src.to_string() };
+        if self.opts.base.is_none() && !self.opts.absolute { return src.to_string() }
         let raw = Path::new(src.strip_prefix("file://").unwrap_or(src));
         let root = self.opts.library_root.map(Path::to_path_buf).unwrap_or_else(crate::store::Store::root_dir);
         // Relative sources left after `parse_file` are the library's (`.assets/…`).
         let abs = if raw.is_absolute() { raw.to_path_buf() } else { root.join(raw) };
+        let Some(base) = self.opts.base else { return abs.to_string_lossy().into_owned() };
         if let Ok(rel) = abs.strip_prefix(base) {
             return rel.components().map(|c| c.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/");
         }
@@ -622,6 +639,8 @@ struct Md {
     underline: bool,
     code: bool,
     link: Option<String>,
+    /// An equation: its own run, written as it is (escaping would change the LaTeX).
+    math: bool,
 }
 
 fn inline(t: &RichText, files: &mut impl FnMut(&FileBlock) -> Option<String>) -> String {
@@ -657,9 +676,10 @@ fn inline(t: &RichText, files: &mut impl FnMut(&FileBlock) -> Option<String>) ->
             underline: m.underline,
             code: m.code,
             link: file_link.or_else(|| m.link.clone().filter(|url| crate::paste::link_ok(url))),
+            math: m.inline.as_ref().and_then(Inline::equation).is_some(),
         };
         match runs.last_mut() {
-            Some((last, text)) if *last == md => text.push_str(&s),
+            Some((last, text)) if *last == md && !md.math => text.push_str(&s),
             _ => runs.push((md, s)),
         }
     }
@@ -672,7 +692,7 @@ fn inline(t: &RichText, files: &mut impl FnMut(&FileBlock) -> Option<String>) ->
         let body = s.trim();
         let lead = &s[..s.len() - s.trim_start().len()];
         let trail = &s[s.trim_end().len()..];
-        if s.starts_with("$$\n") && s.ends_with("\n$$") {
+        if m.math {
             out.push_str(&s);
             continue;
         }
@@ -735,6 +755,32 @@ mod tests {
         assert!(plain.files.is_empty());
         assert!(!plain.text.contains("out.assets"));
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn inline_equations_are_not_escaped() {
+        let text = "a $X_t + \\alpha*b*$ z\n";
+        let mut out = text.to_string();
+        for _ in 0..3 { out = write_file(&parse_file(&out, "t", None), "", None); }
+        assert_eq!(out, text);
+    }
+
+    #[test]
+    fn clipboard_keeps_structure_equations_and_local_paths() {
+        let root = std::env::temp_dir().join("quiet-clip-root");
+        let mut eq = RichText::plain("e: ");
+        eq.push("\u{fffc}", Marks { inline: Some(crate::docxml::to_inline(InlineKind::Equation("X_t".into()))), ..Default::default() });
+        let blocks = vec![
+            Block::new(BlockKind::Heading { level: 2, seq_auto: false }, RichText::plain("小节")),
+            Block::new(BlockKind::Todo { done: true }, RichText::plain("done")),
+            Block::new(BlockKind::Text, eq),
+            Block::new(BlockKind::Image { src_kind: "path".into(), src: ".assets/a b.png".into(), width: None, height: None, caption: None, crop: None }, RichText::default()),
+        ];
+        let md = clipboard(Some("T"), &blocks, &root);
+        let img = root.join(".assets/a b.png").to_string_lossy().replace(' ', "%20");
+        assert!(md.starts_with("# T\n\n## 小节\n\n- [x] done\n\ne: $X_t$\n\n![]("), "{md}");
+        assert!(md.contains(&img), "{md}");
+        assert!(!clipboard(None, &blocks[..1], &root).contains("# T"));
     }
 
     #[test]

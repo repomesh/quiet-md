@@ -735,4 +735,11 @@ pub(super) const STRINGS: &[(&str, &str)] = &[
     ("本周{w}", "Este {w}"),
     ("{n} 字", "{n} palabras"),
     ("已有同名文件：{}", "Ya existe un archivo con este nombre: {}"),
+    ("复制为 Markdown", "Copiar como Markdown"),
+    ("拷贝为 Markdown", "Copiar como Markdown"),
+    ("已复制为 Markdown", "Copiado como Markdown"),
+    ("更改…", "Cambiar…"),
+    ("换用这个文档库？", "¿Cambiar a esta biblioteca?"),
+    ("Quiet.md 会保存当前文档并重启，然后打开 {}。原来的文档库留在原处，不会移动或删除，之后可以再换回来。", "Quiet.md guarda el documento abierto, se reinicia y abre {}. La biblioteca actual se queda donde está, no se mueve ni se borra, y puedes volver a ella más tarde."),
+    ("切换并重启", "Cambiar y reiniciar"),
 ];
