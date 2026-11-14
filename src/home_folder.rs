@@ -281,9 +281,10 @@ impl Workspace {
         }
     }
 
-    pub(crate) fn render_folder_card(&mut self, e: &Entry, card_h: f32, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    /// `w`: the grid's column width, this frame's (the recorded bounds are last
+    /// frame's, stale for a frame after the sidebar opens or closes).
+    pub(crate) fn render_folder_card(&mut self, e: &Entry, w: f32, card_h: f32, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let id = e.id.clone();
-        let w = self.home.folders.bounds.borrow().get(&id).map_or(236., |b| f32::from(b.size.width));
         let h = card_h;
         let hot = self.home.folders.hovered.as_ref() == Some(&id) && self.home.folders.drag.is_none();
         let over = self.home.folders.drag.as_ref().is_some_and(|d| d.started && !d.returning && d.over.as_ref() == Some(&id)) || self.file_drop_over(&id);
@@ -556,7 +557,7 @@ pub(crate) struct FileDrop {
 
 /// Tray illustration: the glass folder's box.
 const ART_W: f32 = 196.;
-const ART_H: f32 = 150.;
+const ART_H: f32 = 168.;
 
 impl FileDrop {
     fn new(paths: Vec<std::path::PathBuf>) -> Self {
@@ -791,21 +792,33 @@ impl Workspace {
             // A dashed edge, set in from the pane: the place to let go. It settles
             // from further inside onto its place as it shows.
             let inset = 22. + 30. * (1. - show);
-            let r = 22.;
+            let r: f32 = 88.;
             let ring = rect(x0 + inset + shake_x * 0.4, y0 + inset, wd - 2. * inset, ht - 2. * inset);
             // The glow starts at the dashed line and fades inward: the blurred shadow of a
             // frame just outside it, seen only inside. Blur keeps the falloff continuous
             // and rounds the corners.
             let depth = (46. + 34. * lit + 30. * flare) * show;
             let a = if reject { 0.10 } else { (0.16 + 0.06 * breath + 0.16 * lit + 0.2 * flare) * show };
-            window.with_content_mask(Some(ContentMask { bounds: ring }), |window| {
-                let (l, t, rw, rh, big) = (f32::from(ring.left()), f32::from(ring.top()), f32::from(ring.size.width), f32::from(ring.size.height), 400.);
-                let glow = [BoxShadow { color: tint.opacity(a), offset: point(px(0.), px(0.)), blur_radius: px(depth), spread_radius: px(0.) }];
-                // Each strip reaches a point inside, or GPUI culls a shadow wholly outside the clip.
-                for side in [rect(l - big, t - big, rw + 2. * big, big + 1.), rect(l - big, t + rh - 1., rw + 2. * big, big + 1.), rect(l - big, t, big + 1., rh), rect(l + rw - 1., t, big + 1., rh)] {
-                    window.paint_shadows(side, px(0.).into(), &glow);
-                }
-            });
+            let (l, t, rw, rh, big) = (f32::from(ring.left()), f32::from(ring.top()), f32::from(ring.size.width), f32::from(ring.size.height), 400.);
+            let glow = [BoxShadow { color: tint.opacity(a), offset: point(px(0.), px(0.)), blur_radius: px(depth), spread_radius: px(0.) }];
+            // Masks are only rectangles, so the ring's squircle inside (see `ui::squircle_path`)
+            // is cut in 1px rows through the corner bands (the dashed line covers the steps);
+            // one rect between.
+            let rr = r.min(rw / 2.).min(rh / 2.).max(0.);
+            let n = rr.ceil() as usize;
+            let rows = (0..n).flat_map(|i| {
+                let (y, hh) = (i as f32, (rr - i as f32).min(1.));
+                let dx = rr - (rr.powi(4) - (rr - y - hh / 2.).powi(4)).max(0.).powf(0.25);
+                [rect(l + dx, t + y, rw - 2. * dx, hh), rect(l + dx, t + rh - y - hh, rw - 2. * dx, hh)]
+            }).chain([rect(l, t + rr, rw, rh - 2. * rr)]);
+            for clip in rows {
+                window.with_content_mask(Some(ContentMask { bounds: clip }), |window| {
+                    // Each strip reaches a point inside, or GPUI culls a shadow wholly outside the clip.
+                    for side in [rect(l - big, t - big, rw + 2. * big, big + 1.), rect(l - big, t + rh - 1., rw + 2. * big, big + 1.), rect(l - big, t, big + 1., rh), rect(l + rw - 1., t, big + 1., rh)] {
+                        window.paint_shadows(side, px(0.).into(), &glow);
+                    }
+                });
+            }
             // The halo under the pointer.
             if !reject && !landed {
                 let c = point(at.x.max(b.left()).min(b.right()), at.y.max(b.top()).min(b.bottom()));
@@ -813,7 +826,7 @@ impl Workspace {
                     &[BoxShadow { color: accent.opacity(0.12 * lit * show), offset: point(px(0.), px(0.)), blur_radius: px(120.), spread_radius: px(70.) }]);
             }
             let ring_a = if reject { 0.22 } else { (0.40 + 0.12 * breath + 0.35 * lit + 0.2 * flare).min(1.) } * show;
-            window.paint_quad(quad(ring, px(r), clear, px(2.), tint.opacity(ring_a), BorderStyle::Dashed));
+            if let Some(p) = crate::ui::squircle_path(ring, r, 1., PathBuilder::stroke(px(2.)).dash_array(&[px(6.), px(5.)])) { window.paint_path(p, tint.opacity(ring_a)); }
             // The ripple from the drop.
             if landed {
                 let far = wd.hypot(ht);

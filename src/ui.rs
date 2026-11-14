@@ -832,7 +832,7 @@ fn squircle_points(b: Bounds<Pixels>, radius: f32, i: f32) -> Vec<Point<Pixels>>
     out
 }
 
-fn squircle_path(b: Bounds<Pixels>, radius: f32, i: f32, mut pb: PathBuilder) -> Option<Path<Pixels>> {
+pub(crate) fn squircle_path(b: Bounds<Pixels>, radius: f32, i: f32, mut pb: PathBuilder) -> Option<Path<Pixels>> {
     // lyon panics on a collapsed outline (a box not laid out yet).
     if f32::from(b.size.width) <= 2. * i + 1. || f32::from(b.size.height) <= 2. * i + 1. || radius <= i { return None }
     let pts = squircle_points(b, radius, i);

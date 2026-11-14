@@ -848,7 +848,8 @@ impl Workspace {
         let n = if wide_cols >= 4 { (((avail + gap) / (240. + gap)).floor() as usize).max(4) } else { (((avail + gap) / (160. + gap)).floor() as usize).clamp(1, 3) };
         // A document card is always 5:6 at its column's width; folders stand
         // taller by their tab so the pages line up beside them.
-        let doc_h = ((avail - gap * (n - 1) as f32) / n as f32) * (6. / 5.);
+        let col_w = (avail - gap * (n - 1) as f32) / n as f32;
+        let doc_h = col_w * (6. / 5.);
         let card_h = if mixed { doc_h / (1. - crate::home_folder::TAB) } else { doc_h };
         let rows = entries.len().div_ceil(n);
         let grid = uniform_list("home-grid-area", rows, cx.processor(move |workspace, range: std::ops::Range<usize>, window, cx| {
@@ -858,7 +859,7 @@ impl Workspace {
                 div().w_full().h(px(card_h + gap)).px(px(24.)).pb(px(gap))
                     .grid().grid_cols(n as u16).gap(px(gap))
                     .children(entries[start..end].iter().map(|e| {
-                        if e.meta.folder.is_some() { workspace.render_folder_card(e, card_h, window, cx) }
+                        if e.meta.folder.is_some() { workspace.render_folder_card(e, col_w, card_h, window, cx) }
                         else if mixed { div().w_full().min_w_0().h(px(card_h)).flex().flex_col().justify_end()
                             .child(workspace.render_home_card(e, doc_h, cx)).into_any_element() }
                         else { workspace.render_home_card(e, card_h, cx) }

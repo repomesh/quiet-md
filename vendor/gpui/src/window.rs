@@ -864,6 +864,7 @@ pub struct Window {
     active: Rc<Cell<bool>>,
     hovered: Rc<Cell<bool>>,
     pub(crate) needs_present: Rc<Cell<bool>>,
+    present_in_transaction: Cell<bool>,
     pub(crate) last_input_timestamp: Rc<Cell<Instant>>,
     pub(crate) refreshing: bool,
     pub(crate) activation_observers: SubscriberSet<(), AnyObserver>,
@@ -1248,6 +1249,7 @@ impl Window {
             active,
             hovered,
             needs_present,
+            present_in_transaction: Cell::new(false),
             last_input_timestamp,
             refreshing: false,
             activation_observers: SubscriberSet::new(),
@@ -1790,6 +1792,13 @@ impl Window {
         self.platform_window.set_min_size(size);
     }
 
+    /// Show the next frame in the same Core Animation transaction as native
+    /// views changed while rendering it (macOS), so they appear together
+    /// instead of the native change landing a refresh ahead.
+    pub fn present_next_frame_in_transaction(&self) {
+        self.present_in_transaction.set(true);
+    }
+
     /// Updates the window's title at the platform level.
     pub fn set_window_title(&mut self, title: &str) {
         self.platform_window.set_title(title);
@@ -2040,7 +2049,8 @@ impl Window {
 
     #[profiling::function]
     fn present(&self) {
-        self.platform_window.draw(&self.rendered_frame.scene);
+        if self.present_in_transaction.take() { self.platform_window.draw_in_transaction(&self.rendered_frame.scene); }
+        else { self.platform_window.draw(&self.rendered_frame.scene); }
         self.needs_present.set(false);
         profiling::finish_frame!();
     }
