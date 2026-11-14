@@ -281,9 +281,10 @@ impl Workspace {
         }
     }
 
-    pub(crate) fn render_folder_card(&mut self, e: &Entry, card_h: f32, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    /// `w`: the grid's column width, this frame's (the recorded bounds are last
+    /// frame's, stale for a frame after the sidebar opens or closes).
+    pub(crate) fn render_folder_card(&mut self, e: &Entry, w: f32, card_h: f32, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let id = e.id.clone();
-        let w = self.home.folders.bounds.borrow().get(&id).map_or(236., |b| f32::from(b.size.width));
         let h = card_h;
         let hot = self.home.folders.hovered.as_ref() == Some(&id) && self.home.folders.drag.is_none();
         let over = self.home.folders.drag.as_ref().is_some_and(|d| d.started && !d.returning && d.over.as_ref() == Some(&id)) || self.file_drop_over(&id);
