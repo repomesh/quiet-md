@@ -2870,7 +2870,8 @@ mod tests {
             Block::new(BlockKind::File(FileBlock { src_kind: "path".into(), src: abs("assets/files/1234/报告.pdf"), name: "报告.pdf".into(), view: FileView::Card }), RichText::default()),
             image(moved.clone()),
             image(abs("assets/gone.png")),
-            image(abs("assets/../secret.png")),
+            // Only through `.assets/x/` once moved: the fallback must not follow it.
+            image(std::env::temp_dir().join("elsewhere/Quiet.md/assets/x/../../secret.png").to_string_lossy().into_owned()),
         ], ..Default::default() };
         let id = old.put(&d, Meta::default());
         old.write();
@@ -2880,6 +2881,7 @@ mod tests {
         std::fs::write(lib.0.join("secret.png"), b"s").unwrap();
         let s = lib.migrated();
         assert!(!lib.0.join("assets").exists());
+        std::fs::create_dir_all(lib.0.join(".assets/x")).unwrap();
         let srcs = s.load(&id).unwrap().asset_sources();
         let found: Vec<Option<PathBuf>> = srcs.iter().map(|src| image_path_in(&lib.0, src).filter(|p| p.is_file())).collect();
         assert_eq!(found, [Some(lib.0.join(".assets/p.png")), Some(lib.0.join(".assets/files/1234/报告.pdf")), Some(lib.0.join(".assets/p.png")), None, None]);
