@@ -470,13 +470,32 @@ fn save_json<T: Serialize>(path: &std::path::Path, v: &T) -> Result<()> {
 }
 
 /// Image path for an image block source (only local files are displayed).
-pub fn image_path(src: &str) -> Option<PathBuf> {
+pub fn image_path(src: &str) -> Option<PathBuf> { image_path_in(&Store::root_dir(), src) }
+
+pub fn image_path_in(root: &Path, src: &str) -> Option<PathBuf> {
     let p = PathBuf::from(src.strip_prefix("file://").unwrap_or(src));
     if p.is_absolute() {
-        return Some(p);
+        return Some(moved_asset(root, &p).unwrap_or(p));
     }
     // Relative to the library (`.assets/…`); not a URI or a cloud token.
-    (!src.is_empty() && !src.contains(':') && src.contains('/')).then(|| Store::root_dir().join(p))
+    (!src.is_empty() && !src.contains(':') && src.contains('/')).then(|| root.join(p))
+}
+
+/// Images and attachments are kept by absolute path (pasted ones too), so one
+/// that is gone may just have moved with the library: `assets/` became
+/// `.assets/` in the move to real folders (#213), or the library itself was
+/// moved. The same file in this library's images folder, when it is there.
+fn moved_asset(root: &Path, p: &Path) -> Option<PathBuf> {
+    use std::path::Component;
+    if p.exists() { return None; }
+    let parts: Vec<Component> = p.components().collect();
+    let dir = Store::assets_in(root);
+    // The last folder so named that leads to a file; a file may be named `assets` itself.
+    (0..parts.len()).rev().filter(|&i| matches!(parts[i].as_os_str().to_str(), Some("assets" | ".assets"))).find_map(|i| {
+        let rest = &parts[i + 1..];
+        if rest.is_empty() || !rest.iter().all(|c| matches!(c, Component::Normal(_))) { return None; }
+        Some(dir.join(rest.iter().collect::<PathBuf>())).filter(|q| q.exists())
+    })
 }
 
 /// Export only files belonging to this library, including after symlink resolution.
@@ -487,7 +506,7 @@ pub fn export_path(src: &str) -> Option<PathBuf> {
 pub fn export_path_in(root: &std::path::Path, src: &str) -> Option<PathBuf> {
     let root = root.canonicalize().ok()?;
     let raw = std::path::Path::new(src.strip_prefix("file://").unwrap_or(src));
-    let path = if raw.is_absolute() { raw.to_path_buf() } else { root.join(raw) }.canonicalize().ok()?;
+    let path = if raw.is_absolute() { moved_asset(&root, raw).unwrap_or_else(|| raw.to_path_buf()) } else { root.join(raw) }.canonicalize().ok()?;
     (path.starts_with(root) && path.is_file()).then_some(path)
 }
 
@@ -2857,6 +2876,45 @@ mod tests {
         assert!(std::fs::read_to_string(s.abs("改名夹/乙.xml")).unwrap().contains("href=\"../夹/甲.xml\""));
         assert!(list.iter().find(|e| e.id == a).unwrap().meta.pinned);
         assert_eq!(s.settings().window_size, Some([1., 2.]));
+    }
+
+    /// Pasted images and attachments kept their absolute path in `assets/`;
+    /// after the move to real folders (`.assets/`), or after the library
+    /// itself moved, they are found where they are now (#213). Nothing
+    /// outside the library's images folder is reached that way.
+    #[test]
+    fn absolute_asset_paths_survive_the_move() {
+        use crate::model::{Block, BlockKind, FileBlock, FileView, RichText};
+        let lib = Lib::new("absolute-assets");
+        let mut old = Old::new(&lib, 3);
+        let abs = |rel: &str| lib.0.join(rel).to_string_lossy().into_owned();
+        let image = |src: String| Block::new(BlockKind::Image { src_kind: "src".into(), src, width: None, height: None, caption: None, crop: None }, RichText::default());
+        let moved = std::env::temp_dir().join("elsewhere/Quiet.md/assets/p.png").to_string_lossy().into_owned();
+        let d = Document { title: RichText::plain("图"), blocks: vec![
+            image(abs("assets/p.png")),
+            Block::new(BlockKind::File(FileBlock { src_kind: "path".into(), src: abs("assets/files/1234/报告.pdf"), name: "报告.pdf".into(), view: FileView::Card }), RichText::default()),
+            image(moved.clone()),
+            image(abs("assets/gone.png")),
+            // Only through `.assets/x/` once moved: the fallback must not follow it.
+            image(std::env::temp_dir().join("elsewhere/Quiet.md/assets/x/../../secret.png").to_string_lossy().into_owned()),
+        ], ..Default::default() };
+        let id = old.put(&d, Meta::default());
+        old.write();
+        std::fs::create_dir_all(lib.0.join("assets/files/1234")).unwrap();
+        std::fs::write(lib.0.join("assets/p.png"), b"png").unwrap();
+        std::fs::write(lib.0.join("assets/files/1234/报告.pdf"), b"pdf").unwrap();
+        std::fs::write(lib.0.join("secret.png"), b"s").unwrap();
+        let s = lib.migrated();
+        assert!(!lib.0.join("assets").exists());
+        std::fs::create_dir_all(lib.0.join(".assets/x")).unwrap();
+        let srcs = s.load(&id).unwrap().asset_sources();
+        let found: Vec<Option<PathBuf>> = srcs.iter().map(|src| image_path_in(&lib.0, src).filter(|p| p.is_file())).collect();
+        assert_eq!(found, [Some(lib.0.join(".assets/p.png")), Some(lib.0.join(".assets/files/1234/报告.pdf")), Some(lib.0.join(".assets/p.png")), None, None]);
+        assert!(export_path_in(&lib.0, &srcs[0]).is_some() && export_path_in(&lib.0, &srcs[1]).is_some());
+        assert!(export_path_in(&lib.0, &srcs[3]).is_none() && export_path_in(&lib.0, &srcs[4]).is_none());
+        // A path that still exists is used as it is.
+        std::fs::write(lib.0.join("here.png"), b"h").unwrap();
+        assert_eq!(image_path_in(&lib.0, &abs("here.png")), Some(lib.0.join("here.png")));
     }
 
     /// 恢复到迁移前: the backup comes back as it was, what the new layout
