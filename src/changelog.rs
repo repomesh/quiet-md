@@ -17,6 +17,15 @@ const REAL_FOLDERS: &str = "文档库改为真实文件夹，以标题命名，�
 /// Each version's notes: (version, [(中文, English)]). Only the running
 /// version's are shown; a version without notes shows nothing.
 const NOTES: &[(&str, &[(&str, &str)])] = &[
+    ("0.1.12", &[
+        ("把文件或「本机文件」直接拖进侧栏的文件夹或两行之间", "Drag files, or Files on this computer, into a sidebar folder or between rows"),
+        ("拖入时整个页面都是放置区，导入前先确认", "The whole page is a drop target; importing into the sidebar asks first"),
+        ("主页卡片改为连续圆角，悬停时有一圈灰色描边", "Home cards have squircle corners and a grey ring on hover"),
+        ("主页和文件夹页的「…」可以在文件管理器中打开所在文件夹", "The … menu on Home and folder pages opens the folder in your file manager"),
+        ("面包屑从「我的文档」开始，窄窗口时自动收起", "Breadcrumbs start at My documents and fold in a narrow window"),
+        ("窗口最小宽度给文档区留足空间，全屏时侧栏不透明", "The window keeps room for the note; the sidebar is solid in full screen"),
+        ("修复在文件夹里新建文档时可能卡死", "Fix a hang when creating a document in a folder"),
+    ]),
     ("0.1.11", &[
         (REAL_FOLDERS, "The library is now real folders named by title, matching the sidebar"),
         ("全新的首次启动，可从 Obsidian、Typora 等导入笔记", "A new first launch that can bring notes from Obsidian, Typora and more"),
