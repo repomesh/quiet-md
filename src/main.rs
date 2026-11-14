@@ -46,6 +46,7 @@ mod search;
 mod sidebar;
 mod local_files;
 mod sidebar_drag;
+mod sidebar_drop;
 mod home_folder;
 mod folders;
 mod file_history;
@@ -112,7 +113,7 @@ pub(crate) fn main_window_options(scripted: bool, at: Option<Bounds<Pixels>>, cx
             appears_transparent: cfg!(any(target_os = "macos", target_os = "windows")),
             traffic_light_position: Some(point(px(20.), px(app::HEADER_H / 2. - 7.))),
         }),
-        window_min_size: Some(size(px(480.), px(480.))),
+        window_min_size: Some(size(px(app::DOC_MIN_W), px(480.))),
         focus: !scripted,
         ..Default::default()
     }

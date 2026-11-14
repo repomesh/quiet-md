@@ -451,6 +451,38 @@ impl Workspace {
         )).with_priority(3).into_any_element())
     }
 
+    /// The header's … menu: open this folder (None: the library) in the
+    /// system's file manager.
+    pub(crate) fn render_place_menu(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let (folder, pos) = self.place_menu.clone()?;
+        let label = if cfg!(target_os = "macos") { crate::settings::tr("在访达中打开", "Open in Finder") }
+            else if cfg!(target_os = "windows") { crate::settings::tr("在文件资源管理器中打开", "Open in File Explorer") }
+            else { crate::settings::tr("在文件管理器中打开", "Open in File Manager") };
+        Some(deferred(anchored().anchor(Corner::TopRight).position(pos).snap_to_window_with_margin(px(8.)).child(
+            crate::ui::popover().id("place-items").occlude().w(px(210.)).py(px(crate::ui::MENU_PAD_Y))
+                .on_mouse_down_out(cx.listener(|w, _, _, cx| { w.place_menu = None; cx.notify(); }))
+                .child(crate::ui::menu_row("place-open", SharedString::from("place-open")).child(crate::ui::icon("folder", 16., Theme::icon())).child(label)
+                    .on_click(cx.listener(move |w, _, _, cx| {
+                        w.place_menu = None;
+                        if let Some(dir) = w.store.folder_dir(folder.as_deref()) { cx.open_with_system(&dir); }
+                        cx.notify();
+                    }))),
+        )).with_priority(3).into_any_element())
+    }
+
+    /// The header's … icon, left of 导入; its menu hangs below it, right-aligned.
+    pub(crate) fn place_button(&self, id: &'static str, folder: Option<String>, cx: &mut Context<Self>) -> Stateful<Div> {
+        let open = self.place_menu.is_some();
+        crate::ui::header_icon(id, "ellipsis")
+            .when(open, |d| d.bg(Theme::fill_hover()))
+            .when(!open, |d| d.tip(crate::settings::tr("更多", "More"), None))
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .on_click(cx.listener(move |w, ev: &ClickEvent, _, cx| {
+                w.place_menu = if w.place_menu.is_some() { None } else { Some((folder.clone(), ev.position() + point(px(18.), px(20.)))) };
+                cx.notify();
+            }))
+    }
+
     /// The header's 导入 icon; its menu hangs below it, right-aligned.
     pub(crate) fn import_button(&self, id: &'static str, parent: Option<String>, cx: &mut Context<Self>) -> Stateful<Div> {
         let open = self.import_menu.is_some();

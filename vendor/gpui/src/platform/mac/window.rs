@@ -1263,6 +1263,11 @@ impl PlatformWindow for MacWindow {
 
     fn set_app_id(&mut self, _app_id: &str) {}
 
+    fn set_min_size(&self, size: Size<Pixels>) {
+        let window = self.0.lock().native_window;
+        unsafe { window.setContentMinSize_(NSSize { width: size.width.0 as f64, height: size.height.0 as f64 }); }
+    }
+
     fn set_background_appearance(&self, background_appearance: WindowBackgroundAppearance) {
         let mut this = self.0.as_ref().lock();
 

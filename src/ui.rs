@@ -856,24 +856,6 @@ pub fn squircle_outline(radius: f32, width: f32, color: Hsla) -> impl IntoElemen
     }).absolute().inset_0()
 }
 
-/// The outside of the four squircle corners, in `color`.
-pub fn squircle_corner_mask(radius: f32, color: Hsla) -> impl IntoElement {
-    canvas(|b, _, _| b, move |_, b, window, _| {
-        const N: usize = 24;
-        if f32::from(b.size.width) < 1. || f32::from(b.size.height) < 1. || radius <= 0. { return }
-        let pts = squircle_points(b, radius, 0.);
-        let corners = [b.top_right(), b.bottom_right(), b.bottom_left(), b.origin];
-        let mut pb = PathBuilder::fill();
-        for (c, corner) in corners.iter().enumerate() {
-            let arc = &pts[c * (N + 1)..(c + 1) * (N + 1)];
-            pb.move_to(*corner);
-            for p in arc { pb.line_to(*p); }
-            pb.close();
-        }
-        if let Ok(p) = pb.build() { window.paint_path(p, color); }
-    }).absolute().inset_0()
-}
-
 /// A capsule filled to `fraction` from the left, its edge a moving wave (the
 /// update pill's download progress). Redraws every frame while shown.
 pub fn wave_fill(fraction: f32, color: Hsla) -> impl IntoElement {

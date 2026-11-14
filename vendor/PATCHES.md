@@ -46,6 +46,7 @@ diff -ru $R/taffy-0.9.0/src vendor/taffy/src
 | 25 | `platform/windows/directx_renderer.rs`、`directx_atlas.rs`、`platform.rs`、`events.rs`、`window.rs` | GPU 设备丢失时：resize 失败后 render target 为 `None`，绘制前先重做（原来 `pre_draw` 直接 unwrap 崩溃，旧 back buffer 还会被二次释放）；渲染器恢复失败可重试，已释放的设备和资源只释放一次，期间不绘制、不 resize，恢复时按窗口当前大小建交换链，下一帧再试；atlas 查不到纹理时跳过这批 sprite；重建 DirectX 设备失败时不再把丢失的设备当新设备发给窗口，下一次 vsync 重试；恢复后重新设置窗口的亚克力模糊（驱动重启后会丢，侧栏后面的窗口不再被模糊） | 显卡驱动重启、睡眠唤醒、驱动更新后应用不崩溃，恢复后正常显示 |
 | 26 | `window.rs` | `Window::replace_root` 同时更新窗口句柄记录的根视图类型（`handle.state_type` 和 `App::window_handles` 里那一份） | 首次启动的引导页走完后，在同一个窗口里换成主界面；原来换了根视图后 `downcast::<新类型>()` 仍然失败，按主界面找窗口的地方找不到它 |
 
+| 27 | `platform.rs`、`platform/mac/window.rs`、`platform/windows/window.rs`、`window.rs` | `Window::set_window_min_size`：创建后改窗口最小内容尺寸（macOS `setContentMinSize`，Windows 改 `WM_GETMINMAXINFO` 用的 `min_size`；其他平台不变） | 最小宽度 = 文档区最小宽度 + 侧栏宽度，随侧栏开合和拖宽变化 |
 
 ## taffy 0.9.0
 

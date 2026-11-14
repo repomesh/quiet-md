@@ -752,6 +752,10 @@ impl PlatformWindow for WindowsWindow {
         self.0.state.borrow().hovered
     }
 
+    fn set_min_size(&self, size: Size<Pixels>) {
+        self.0.state.borrow_mut().min_size = Some(size);
+    }
+
     fn set_title(&mut self, title: &str) {
         unsafe { SetWindowTextW(self.0.hwnd, &HSTRING::from(title)) }
             .inspect_err(|e| log::error!("Set title failed: {e}"))

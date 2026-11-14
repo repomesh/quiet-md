@@ -52,7 +52,7 @@ scripts/check.sh        # cargo test --release + clippy --all-targets 零警告
 - 不用真实系统剪贴板，`key cmd-v` 只在 `clip` 之后用。
 - 不用 `activate` 抢焦点。
 - 不点这些：
-  - 设置 › 文档库的「在访达中显示」；
+  - 设置 › 文档库的「在访达中显示」，主页和文件夹页「…」里的「在访达中打开」；
   - 链接和「网页搜索」；
   - 打印；
   - 快速查看。

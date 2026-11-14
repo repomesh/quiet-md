@@ -46,6 +46,12 @@ thread_local! {
 }
 
 pub fn dark() -> bool { DARK.load(Ordering::Relaxed) && !FORCE_LIGHT.with(|f| f.get()) }
+
+/// Full screen: no desktop behind the window, so the sidebar is a solid colour, not glass.
+static FULLSCREEN: AtomicBool = AtomicBool::new(false);
+pub fn fullscreen() -> bool { FULLSCREEN.load(Ordering::Relaxed) }
+/// Set from the main window each frame; true when it changed.
+pub fn set_fullscreen(on: bool) -> bool { FULLSCREEN.swap(on, Ordering::Relaxed) != on }
 /// Switch the look; true when it changed.
 pub fn set_dark(on: bool) -> bool { DARK.swap(on, Ordering::Relaxed) != on }
 /// Run `f` with the light colours (HTML export, printing, copy as rich text).
@@ -343,9 +349,9 @@ impl Theme {
     pub fn bg_overlay() -> Hsla { c(craft::N100) }
     pub fn line_divider() -> Hsla { ca(craft::N1000, 0.06) }
     pub fn line_border() -> Hsla { ca(craft::N1000, 0.08) }
-    /// The 0.5pt edge of a 主页 document card, and under the pointer.
+    /// The 0.5pt edge of a 主页 document card, and the ring around it under the pointer.
     pub fn line_sheet() -> Hsla { ca(craft::N1000, 0.07) }
-    pub fn line_sheet_hover() -> Hsla { ca(craft::N1000, 0.13) }
+    pub fn ring_sheet() -> Hsla { ca(craft::N1000, 0.07) }
     pub fn fill_hover() -> Hsla { ca(craft::N1000, 0.045) }
     pub fn fill_hover_strong() -> Hsla { ca(craft::N1000, 0.06) }
     pub fn fill_pressed() -> Hsla { ca(craft::N1000, 0.09) }
@@ -392,7 +398,7 @@ impl Theme {
     pub fn window() -> Hsla {
         // 外观 › 窗口背景: an opaque window keeps a moving desktop from showing
         // through the sidebar (which some people find distracting).
-        if crate::settings::prefs().opaque_window { return ca(craft::WINDOW, 1.) }
+        if crate::settings::prefs().opaque_window || fullscreen() { return ca(craft::WINDOW, 1.) }
         if crate::native_header::supported() { ca(craft::WINDOW, 0.) } else if crate::theme::glass() { ca(craft::WINDOW, 0.84) } else { ca(craft::WINDOW, 1.) }
     }
 
