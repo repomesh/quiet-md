@@ -1214,6 +1214,15 @@ impl Workspace {
             .unwrap_or_default();
         let mut crumbs: Vec<AnyElement> = vec![];
         let sep = || div().mx(px(3.)).flex_none().child(icon("chevron-right", 12., Theme::icon())).into_any_element();
+        // Every path starts at the library, as a folder page's does.
+        if self.current.is_some() {
+            crumbs.push(div().id("crumb-library").no_drag().flex_none().px(px(4.)).rounded(px(4.)).cursor_pointer()
+                .whitespace_nowrap().text_color(Theme::text_caption()).hover(|s| s.text_color(Theme::primary_500()))
+                .child(ui_text(crate::settings::tr("我的文档", "My documents").to_string()))
+                .on_click(cx.listener(|w, _, _, cx| w.show_view(View::Home, cx)))
+                .into_any_element());
+            crumbs.push(sep());
+        }
         for (i, (id, name, em)) in chain.iter().enumerate() {
             if chain.len() > 2 && i > 0 && i < chain.len() - 1 {
                 if i == 1 {

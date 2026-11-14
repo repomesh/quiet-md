@@ -56,7 +56,7 @@ const STARRED_COLS: [Col; 4] = [Col::Modified, Col::Created, Col::Visited, Col::
 
 /// Bounded document trees retain formatting without retaining a whole long document.
 type EquationNumbers = HashMap<crate::model::BlockId, u32>;
-struct ThumbContent { blocks: Vec<crate::model::Block>, eqnos: EquationNumbers, cover: Option<crate::model::Cover>, has_subpages: bool }
+struct ThumbContent { blocks: Vec<crate::model::Block>, eqnos: EquationNumbers, has_subpages: bool }
 type Thumb = Rc<ThumbContent>;
 
 fn has_subpage_list(blocks: &[crate::model::Block]) -> bool {
@@ -508,16 +508,19 @@ impl Workspace {
         }
         let mut budget = 32;
         let mut eqnos = HashMap::new();
-        let mut cover = None;
-        let mut blocks = self.store.load(&e.id).map(|doc| {
-            cover = doc.cover.clone();
+        let loaded = self.store.load(&e.id).map(|doc| {
             let numbers = crate::editor::equation_numbers(&doc);
             thumb_blocks(&doc.blocks, &mut budget, 0, &numbers, &mut eqnos)
-        }).unwrap_or_default();
+        });
+        let read = loaded.is_ok();
+        let mut blocks = loaded.unwrap_or_default();
         let has_subpages = has_subpage_list(&blocks);
         if has_subpages { subpages(&mut blocks, &children, &mut budget); }
         let stamp = if has_subpages { full_stamp } else { base_stamp };
-        let t: Thumb = Rc::new(ThumbContent { blocks, eqnos, cover, has_subpages });
+        let t: Thumb = Rc::new(ThumbContent { blocks, eqnos, has_subpages });
+        // A failed read (mid-write by another process, still in iCloud) is not
+        // remembered: the card would stay blank until the document changes.
+        if !read { return t; }
         let mut thumbs = self.home.thumbs.borrow_mut();
         // Keep recent previews warm without retaining every document ever visited.
         if thumbs.len() >= 128 && !thumbs.contains_key(&e.id) {
@@ -842,7 +845,10 @@ impl Workspace {
         let gap = if mixed { 24. } else { 16. };
         let wide_cols = (((avail + gap) / (200. + gap)).floor() as usize).max(1);
         let n = if wide_cols >= 4 { (((avail + gap) / (240. + gap)).floor() as usize).max(4) } else { (((avail + gap) / (160. + gap)).floor() as usize).clamp(1, 3) };
-        let card_h = ((avail - gap * (n - 1) as f32) / n as f32) * (264. / 236.);
+        // A document card is always 5:6 at its column's width; folders stand
+        // taller by their tab so the pages line up beside them.
+        let doc_h = ((avail - gap * (n - 1) as f32) / n as f32) * (6. / 5.);
+        let card_h = if mixed { doc_h / (1. - crate::home_folder::TAB) } else { doc_h };
         let rows = entries.len().div_ceil(n);
         let grid = uniform_list("home-grid-area", rows, cx.processor(move |workspace, range: std::ops::Range<usize>, window, cx| {
             range.map(|row| {
@@ -853,7 +859,7 @@ impl Workspace {
                     .children(entries[start..end].iter().map(|e| {
                         if e.meta.folder.is_some() { workspace.render_folder_card(e, card_h, window, cx) }
                         else if mixed { div().w_full().min_w_0().h(px(card_h)).flex().flex_col().justify_end()
-                            .child(workspace.render_home_card(e, card_h * (1. - crate::home_folder::TAB), cx)).into_any_element() }
+                            .child(workspace.render_home_card(e, doc_h, cx)).into_any_element() }
                         else { workspace.render_home_card(e, card_h, cx) }
                     }))
             }).collect()
@@ -905,8 +911,7 @@ impl Workspace {
             let id2 = e.id.clone();
             let thumb = self.thumb(e);
             let page = self.thumb_page_with(e, &thumb, 18.);
-            let cover = thumb.cover.as_ref().and_then(|c| crate::store::image_path(&c.src));
-            let frame = 4.;
+            let radius = 32.;
             let menu_on = self.row_menu.as_ref().is_some_and(|m| m.id == e.id);
             let check = self.home_check(e);
             let arm = e.id.clone();
@@ -915,7 +920,7 @@ impl Workspace {
             if self.home_dragging(&e.id) {
                 return div().id(SharedString::from(format!("home-card-{}", e.id))).w_full().min_w_0().h(px(card_h)).relative()
                     .child(self.record_home_card(&e.id))
-                    .child(crate::ui::continuous_surface(20., Theme::fill_hover()).size_full())
+                    .child(crate::ui::squircle_surface(radius, Theme::fill_hover()).size_full())
                     .into_any_element();
             }
                 div()
@@ -924,11 +929,11 @@ impl Workspace {
                     .child(self.record_home_card(&e.id))
                     .w_full().min_w_0().h(px(card_h)).relative().group("home-card")
                     .flex_none()
-                    .bg(Theme::bg_overlay()).p(px(frame))
-                    .overflow_hidden()
+                    // A loose sheet on the home page: squircle corners, a 0.5pt
+                    // hairline and the faintest lift; hover darkens the hairline.
                     .cursor_pointer()
-                    .hover(|s| s.bg(Theme::fill_hover_strong()))
-                    .when(menu_on, |d| d.bg(Theme::fill_hover_strong()))
+                    // Inset as the folder card's shadow box is (6 a side, 10 from the top).
+                    .child(div().absolute().left(px(6.)).right(px(6.)).top(px(10.)).bottom_0().rounded(px(radius * 0.6)).shadow(theme::shadow_sheet()))
                     .on_click(cx.listener(move |w, _, window, cx| w.home_click(&id, window, cx)))
                     .when(check.is_none(), |d| d.on_mouse_down(
                         MouseButton::Right,
@@ -937,9 +942,11 @@ impl Workspace {
                             cx.notify();
                         }),
                     ))
-                    .when_some(cover, |d, path| d.child(picture(&path, card_h * THUMB).absolute().inset_0().size_full().object_fit(ObjectFit::Fill)))
-                    .child(crate::ui::continuous_page(20. - frame).size_full().overflow_hidden().child(page.relative()))
-                    .child(crate::ui::continuous_corner_mask(20., Theme::bg_body()))
+                    .child(crate::ui::squircle_surface(radius, Theme::bg_body()).size_full().overflow_hidden().child(page.relative()))
+                    .child(crate::ui::squircle_corner_mask(radius, Theme::bg_body()))
+                    .child(crate::ui::squircle_outline(radius, 0.5, Theme::line_sheet()))
+                    .child(div().absolute().inset_0().when(!menu_on, |d| d.opacity(0.).group_hover("home-card", |s| s.opacity(1.)))
+                        .child(crate::ui::squircle_outline(radius, 0.5, Theme::line_sheet_hover())))
                     .when_some(check, |d, c| d.child(div().absolute().top(px(12.)).left(px(12.)).child(c)))
                     .when(self.batch.is_none(), |d| d.child(
                         div().absolute().top(px(8.)).right(px(8.))
