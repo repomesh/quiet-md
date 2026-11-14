@@ -485,6 +485,8 @@ pub(crate) trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn is_hovered(&self) -> bool;
     fn set_title(&mut self, title: &str);
     fn set_background_appearance(&self, background_appearance: WindowBackgroundAppearance);
+    /// Change the smallest content size the user can resize the window to.
+    fn set_min_size(&self, _size: Size<Pixels>) {}
     fn minimize(&self);
     fn zoom(&self);
     fn toggle_fullscreen(&self);

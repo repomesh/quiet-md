@@ -206,7 +206,13 @@ pub enum Confirm {
     /// The library should move to real folders, and the user is asked first
     /// (it is synced, or used from another computer): 改用文件夹 / 稍后.
     Migrate(crate::store::ConsentReason),
+    /// Dropped on the sidebar from outside: import it into the library there?
+    Import { what: DropImport, target: crate::sidebar_drop::SidebarDropAt },
 }
+
+/// What a sidebar drop would import: files and folders from the Finder, or a 本机文件.
+#[derive(Clone, Debug)]
+pub enum DropImport { Files(Vec<std::path::PathBuf>), Local(String) }
 
 /// What to do once the open document is safely on disk (or its changes given up).
 pub type AfterSave = Box<dyn FnOnce(&mut Workspace, &mut Window, &mut Context<Workspace>)>;
@@ -251,10 +257,14 @@ pub struct Workspace {
     pub sidebar_width: f32,
     /// The resize handle is being dragged.
     pub sidebar_drag: bool,
+    /// The window's minimum width as last given to it (`DOC_MIN_W` plus the sidebar).
+    min_w: f32,
     pub folder_current: Option<String>,
     pub create_menu: Option<(Option<String>, Point<Pixels>)>,
     /// The header's 导入 menu: the folder it imports into, and where it hangs.
     pub import_menu: Option<(Option<String>, Point<Pixels>)>,
+    /// The header's … menu on Home (None) or a folder page: where it hangs.
+    pub place_menu: Option<(Option<String>, Point<Pixels>)>,
     pub folder_drag: crate::sidebar_drag::SidebarDrag,
     /// The search dialog (command-center style) is open.
     pub search_open: bool,
@@ -294,6 +304,8 @@ pub struct Workspace {
     pub folded: [bool; 3],
     /// Expanded pages of the 我的文档 tree.
     pub expanded: HashSet<String>,
+    /// Where a drag from outside the tree (the Finder, 本机文件) would land in the sidebar.
+    pub sidebar_drop: Option<crate::sidebar_drop::SidebarDropAt>,
     pub move_dlg: Option<crate::tree::MoveDialog>,
     /// 导出 Markdown 设置.
     pub export_md: Option<crate::transfer::ExportMd>,
@@ -461,10 +473,12 @@ impl Workspace {
             search_sel: None,
             sidebar_open: !quick,
             sidebar_width,
+            min_w: 0.,
             sidebar_drag: false,
             folder_current: None,
             create_menu: None,
             import_menu: None,
+            place_menu: None,
             folder_drag: Default::default(),
             search_open: false,
             status: SaveStatus::Idle,
@@ -496,6 +510,7 @@ impl Workspace {
             shortcuts: false,
             folded: [false; 3],
             expanded: HashSet::new(),
+            sidebar_drop: None,
             move_dlg: None,
             export_md: None,
             focus: cx.focus_handle(),
@@ -1192,7 +1207,8 @@ impl Workspace {
             .on_click(cx.listener(|w, _, window, cx| w.open_search(window, cx))))
     }
 
-    fn top_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    /// `pane_w`: the width the header spans, to fold the breadcrumbs when narrow.
+    fn top_bar(&self, pane_w: f32, cx: &mut Context<Self>) -> impl IntoElement {
         let title = self
             .editor
             .as_ref()
@@ -1269,6 +1285,19 @@ impl Workspace {
             );
             crumbs.push(sep());
         }
+        // Too narrow for the path: it folds into one "…" (the path on hover),
+        // and the title keeps the room. Left: the sidebar's buttons when it is
+        // closed; right: the three actions.
+        let left = if self.sidebar_open { 18. } else { theme::TRAFFIC_LIGHTS_W + 4. + 28. + 4. + 28. + 25. };
+        let room = pane_w - left - crate::ui::header_right_inset() - 3. * HEADER_ACTIONS_H - 8. - 16.;
+        if room < 360. && !crumbs.is_empty() {
+            let path: Vec<&str> = std::iter::once(crate::settings::tr("我的文档", "My documents")).chain(chain.iter().map(|c| c.1.as_str())).collect();
+            crumbs = vec![
+                div().id("crumb-more").no_drag().flex_none().size(px(20.)).flex().items_center().justify_center().rounded(px(4.))
+                    .text_color(Theme::text_caption()).tip(&path.join(" / "), None).child("…").into_any_element(),
+                sep(),
+            ];
+        }
         let record_more = self.more_btn_bounds.clone();
         div()
             .id("top-bar").relative()
@@ -1322,6 +1351,7 @@ impl Workspace {
                         div()
                             .h(px(20.))
                             .min_w_0()
+                            .overflow_hidden()
                             .flex()
                             .items_center()
                             .text_size(px(13.))
@@ -1383,6 +1413,9 @@ impl Workspace {
 
 /// Header and action group share an 8px top/right inset.
 pub const HEADER_H: f32 = 48.;
+/// The narrowest the main pane (document, Home, settings) gets: the window's
+/// minimum width is this plus the open sidebar.
+pub const DOC_MIN_W: f32 = 480.;
 pub(crate) const HEADER_ACTIONS_H: f32 = 32.;
 
 impl Render for Workspace {
@@ -1391,7 +1424,18 @@ impl Render for Workspace {
         // down), so leaving the document hands it back to the window's keys.
         if self.view != View::Doc && self.editor.as_ref().is_some_and(|e| e.read(cx).focus.is_focused(window)) { window.focus(&self.focus); }
         crate::editor::image::frame_drawn(window, cx);
-        self.native_sidebar.sync(if self.sidebar_open { self.sidebar_w(window) } else { 0. }, window);
+        // Full screen: the sidebar is solid (`Theme::window`) and the native glass stays hidden.
+        crate::theme::set_fullscreen(window.is_fullscreen());
+        self.native_sidebar.sync(if self.sidebar_open && !crate::theme::fullscreen() { self.sidebar_w(window) } else { 0. }, window);
+        // The pane keeps its minimum beside the sidebar: opening the sidebar in
+        // a narrow window widens the window rather than squeezing the note.
+        let min_w = DOC_MIN_W + if self.sidebar_open { self.sidebar_w(window) } else { 0. };
+        if min_w != self.min_w {
+            self.min_w = min_w;
+            window.set_window_min_size(size(px(min_w), px(480.)));
+            let vs = window.viewport_size();
+            if f32::from(vs.width) < min_w - 0.5 && !window.is_fullscreen() { window.resize(size(px(min_w), vs.height)); }
+        }
         let sidebar = if self.sidebar_open { Some(if matches!(self.view, View::Settings | View::Trash) { self.render_settings_sidebar(window, cx) } else { self.render_sidebar(window, cx) }) } else { None };
         let row_menu = self.render_row_menu(window, cx);
         let resize = self.sidebar_open.then(|| self.render_resize_handle(window, cx));
@@ -1401,6 +1445,7 @@ impl Render for Workspace {
         let file_drop = self.render_file_drop(window, cx);
         let create_menu = self.render_create_menu(cx);
         let import_menu = self.render_import_menu(cx);
+        let place_menu = self.render_place_menu(cx);
         let search = self.render_search(window, cx);
         let doc_menu = self.render_doc_menu(window, cx);
         let doc_info = self.render_doc_info(cx);
@@ -1419,7 +1464,7 @@ impl Render for Workspace {
                 .h_full()
                 .flex()
                 .flex_col()
-                .child(self.top_bar(cx))
+                .child(self.top_bar(f32::from(window.viewport_size().width) - if self.sidebar_open { self.sidebar_w(window) } else { 0. }, cx))
                 .child(
                     div()
                         .flex_1()
@@ -1590,6 +1635,7 @@ impl Render for Workspace {
             .children(home_drag_overlay)
             .children(create_menu)
             .children(import_menu)
+            .children(place_menu)
             .children(toast)
             // Over everything, toasts included, until its last page is done.
             .when_some(self.onboarding.clone(), |d, o| d.child(deferred(div().id("onboarding-cover").absolute().inset_0().occlude().child(o)).with_priority(30)))

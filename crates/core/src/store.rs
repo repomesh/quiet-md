@@ -809,6 +809,15 @@ impl Store {
         self.index.get(id).filter(|m| m.folder.is_none()).map(|_| self.path(id))
     }
 
+    /// A folder on disk: `None` the library itself. The old flat layout keeps
+    /// folders only in its index, so they open as the library.
+    pub fn folder_dir(&self, id: Option<&str>) -> Option<PathBuf> {
+        match id {
+            None => Some(self.root.clone()),
+            Some(id) => self.index.get(id).filter(|m| m.folder.is_some()).map(|m| if self.flat { self.root.clone() } else { self.abs(&m.rel) }),
+        }
+    }
+
     pub fn is_markdown(&self, id: &str) -> bool { self.index.get(id).is_some_and(|m| m.markdown) }
 
     /// The folder of a 本机文件, which its images are relative to.
@@ -1386,10 +1395,12 @@ impl Store {
     /// child; the file is written there, never moved there afterwards.
     pub fn create_from_in(&mut self, doc: &Document, parent: Option<&str>) -> Result<String> {
         let id = uuid::Uuid::new_v4().to_string();
-        let _lock = self.begin_write()?;
+        let lock = self.begin_write()?;
         self.validate_folder(None, parent)?;
         self.save_in(&id, doc, parent)?;
         self.record_file_change(&id, None);
+        // `move_in_tree` takes the lock itself: outside a batch, holding it here would wait on ourselves.
+        drop(lock);
         self.place_new(&id, parent)?;
         Ok(id)
     }
@@ -1401,7 +1412,7 @@ impl Store {
     /// `create_markdown` into folder `parent`, like `create_from_in`.
     pub fn create_markdown_in(&mut self, doc: &Document, front: &str, parent: Option<&str>) -> Result<String> {
         let id = uuid::Uuid::new_v4().to_string();
-        let _lock = self.begin_write()?;
+        let lock = self.begin_write()?;
         self.validate_folder(None, parent)?;
         let t = now();
         if self.flat {
@@ -1416,6 +1427,7 @@ impl Store {
         let text = format!("{front}{}", crate::markdown::write_file(doc, "", None));
         if let Err(e) = self.write_file(&self.path(&id), text.as_bytes()).and_then(|_| self.save_index()) { self.index.remove(&id); return Err(e); }
         self.record_file_change(&id, None);
+        drop(lock);
         self.place_new(&id, parent)?;
         Ok(id)
     }
@@ -2010,6 +2022,19 @@ mod tests {
         s.restore(&id).unwrap();
         assert!(file.is_file());
         assert_eq!(s.load(&id).unwrap().title.text, "Renamed");
+    }
+
+    /// Into a folder outside a batch (a 本机文件 dragged onto a sidebar folder):
+    /// placing it takes the write lock again, which must not wait on itself.
+    #[test]
+    fn creating_into_a_folder_outside_a_batch() {
+        let lib = Lib::new("create-into");
+        let mut s = lib.open();
+        let folder = s.create_folder("Notes", None).unwrap();
+        let (_, doc) = s.create().unwrap();
+        let md = s.create_markdown_in(&doc, "", Some(&folder)).unwrap();
+        let xml = s.create_from_in(&doc, Some(&folder)).unwrap();
+        for id in [md, xml] { assert_eq!(s.list().into_iter().find(|e| e.id == id).unwrap().meta.parent.as_deref(), Some(folder.as_str())); }
     }
 
     #[test]

@@ -341,6 +341,20 @@ impl Workspace {
                     false,
                 )
             }
+            Confirm::Import { what, target } => {
+                let place = self.drop_place(target);
+                let what_s = match what {
+                    crate::app::DropImport::Local(id) => crate::localized_format!("「{}」", "“{}”", title_of(id)),
+                    crate::app::DropImport::Files(p) if p.len() == 1 => crate::localized_format!("「{}」", "“{}”", p[0].file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()),
+                    crate::app::DropImport::Files(p) => crate::localized_format!("这 {} 项", "these {} items", p.len()),
+                };
+                (
+                    crate::localized_format!("是否将{}导入到「{}」？", "Import {} into “{}”?", what_s, place),
+                    crate::settings::tr("会复制一份到文档库里，原文件不会改动。", "A copy goes into the library; the original file is left as it is.").to_string(),
+                    crate::settings::tr("导入", "Import"),
+                    false,
+                )
+            }
             Confirm::SaveFailed => (
                 crate::settings::text("文档保存失败").to_string(),
                 crate::localized_format!("{}。可以重试或另存副本；重新载入将放弃未保存的修改并载入磁盘内容。", "{}. Retry or save a copy. Reload discards unsaved changes and loads the document from disk.", self.save_error()),
@@ -423,6 +437,7 @@ impl Workspace {
                             }
                             Confirm::SaveFailed => w.resolve_save_failed(true, window, cx),
                             Confirm::Migrate(_) => w.migrate_library(window, cx),
+                            Confirm::Import { what, target } => w.import_dropped(what, target, window, cx),
                         }
                         cx.notify();
                     }))),

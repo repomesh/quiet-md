@@ -626,6 +626,7 @@ impl Workspace {
             .when(narrow, |d| d.child(crate::ui::header_icon("home-search", "search").mr(px(4.))
                 .tip(crate::settings::tr("搜索文档", "Search documents"), Some(crate::shortcuts::hint("workspace::FocusSearch", "⌘ + J")))
                 .on_click(cx.listener(|w, _, window, cx| w.open_search(window, cx)))))
+            .child(self.place_button("home-more", None, cx))
             .child(self.import_button("home-import", None, cx))
             .child(
             crate::ui::header_icon("home-new", "plus")
@@ -907,6 +908,7 @@ impl Workspace {
     }
 
     fn render_home_card(&self, e: &Entry, card_h: f32, cx: &mut Context<Self>) -> AnyElement {
+            const RING: f32 = 3.;
             let id = e.id.clone();
             let id2 = e.id.clone();
             let thumb = self.thumb(e);
@@ -943,10 +945,11 @@ impl Workspace {
                         }),
                     ))
                     .child(crate::ui::squircle_surface(radius, Theme::bg_body()).size_full().overflow_hidden().child(page.relative()))
-                    .child(crate::ui::squircle_corner_mask(radius, Theme::bg_body()))
                     .child(crate::ui::squircle_outline(radius, 0.5, Theme::line_sheet()))
-                    .child(div().absolute().inset_0().when(!menu_on, |d| d.opacity(0.).group_hover("home-card", |s| s.opacity(1.)))
-                        .child(crate::ui::squircle_outline(radius, 0.5, Theme::line_sheet_hover())))
+                    // Hovered, or its menu open: a soft grey ring around the card.
+                    .child(div().absolute().left(px(-RING)).right(px(-RING)).top(px(-RING)).bottom(px(-RING))
+                        .when(!menu_on, |d| d.opacity(0.).group_hover("home-card", |s| s.opacity(1.)))
+                        .child(crate::ui::squircle_outline(radius + RING, RING, Theme::ring_sheet())))
                     .when_some(check, |d, c| d.child(div().absolute().top(px(12.)).left(px(12.)).child(c)))
                     .when(self.batch.is_none(), |d| d.child(
                         div().absolute().top(px(8.)).right(px(8.))

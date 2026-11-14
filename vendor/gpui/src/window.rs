@@ -1784,6 +1784,12 @@ impl Window {
         self.platform_window.window_controls()
     }
 
+    /// Change the smallest content size the user can resize the window to
+    /// (macOS and Windows; elsewhere the size given at creation stays).
+    pub fn set_window_min_size(&self, size: Size<Pixels>) {
+        self.platform_window.set_min_size(size);
+    }
+
     /// Updates the window's title at the platform level.
     pub fn set_window_title(&mut self, title: &str) {
         self.platform_window.set_title(title);
