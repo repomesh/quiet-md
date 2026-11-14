@@ -101,6 +101,7 @@ impl Workspace {
     pub(crate) fn render_sidebar(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let entries: Vec<Entry> = self.entries.clone();
         self.more_bounds.borrow_mut().clear();
+        self.settle_sidebar_drop(cx);
 
         let header = div()
             .h(px(crate::app::HEADER_H))
@@ -174,7 +175,8 @@ impl Workspace {
             }
             list = list.child(div().h(px(GROUP_GAP - SECTION_TOP)));
         }
-        list = list.child(self.section(1, crate::settings::text("我的文档"), cx));
+        // Dropped from outside with no tree shown to open a slot in: the heading lights.
+        list = list.child(self.section(1, crate::settings::text("我的文档"), cx).rounded(px(ROW_R)).when(self.sidebar_drop_top(), |d| d.bg(Theme::sidebar_selected())));
         if !self.folded[1] {
             list = list.child(self.render_folder_rows(window, cx));
         }
@@ -247,7 +249,7 @@ impl Workspace {
             .flex_col()
             .child(header)
             .child(nav)
-            .child(div().id("doc-list").flex_1().min_h_0().overflow_y_scroll().track_scroll(&self.list_scroll).child(list))
+            .child(self.sidebar_drop_zone(div().id("doc-list").flex_1().min_h_0().overflow_y_scroll().track_scroll(&self.list_scroll).child(list), cx))
             .children(crate::changelog::card(cx.listener(|_, _, _, cx| cx.notify())))
             .child(footer)
             .into_any_element()
@@ -489,7 +491,7 @@ impl Workspace {
             .cursor_pointer()
             .on_mouse_down(
                 MouseButton::Left,
-                cx.listener(move |w, ev: &MouseDownEvent, window, cx| {
+                cx.listener(move |w, ev: &MouseDownEvent, _, cx| {
                     if w.rename.as_ref().is_some_and(|r| r.id == id) {
                         return;
                     }
@@ -501,9 +503,14 @@ impl Workspace {
                         return;
                     }
                     if in_lib { w.arm_folder_drag(&id, ev.position, cx); }
-                    else { w.open(&id, window, cx); }
                 }),
             )
+            // A 本机文件 row opens on click, and can be carried up into the tree to import it.
+            .when(key == "local", |d| {
+                let (open, drag) = (e.id.clone(), crate::sidebar_drop::LocalRowDrag { id: e.id.clone(), title: crate::settings::display_title(&e.title) });
+                d.on_click(cx.listener(move |w, _, window, cx| w.open(&open, window, cx)))
+                    .on_drag(drag, |d, _, _, cx| cx.new(|_| d.clone()))
+            })
             .on_mouse_down(
                 MouseButton::Right,
                 cx.listener(move |w, ev: &MouseDownEvent, _, cx| {

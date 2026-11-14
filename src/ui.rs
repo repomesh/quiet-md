@@ -813,34 +813,47 @@ impl Element for UiPara {
     }
 }
 
-/// Paint the outside of a continuous corner, including over cover images.
-pub fn continuous_corner_mask(radius: f32, color: Hsla) -> impl IntoElement {
-    canvas(|bounds, _, _| bounds, move |_, b, window, _| paint_corner_mask(b, radius, color, window)).absolute().inset_0()
+/// CSS `corner-shape: squircle` (superellipse |x|⁴ + |y|⁴ = 1 in each `r`
+/// box): the outline of `b` inset by `i`, clockwise from the top edge.
+fn squircle_points(b: Bounds<Pixels>, radius: f32, i: f32) -> Vec<Point<Pixels>> {
+    let (x, y) = (f32::from(b.left()) + i, f32::from(b.top()) + i);
+    let (w, h) = (f32::from(b.size.width) - 2. * i, f32::from(b.size.height) - 2. * i);
+    let r = (radius - i).max(0.).min(w / 2.).min(h / 2.);
+    const N: usize = 24;
+    let mut out = Vec::with_capacity(4 * (N + 1));
+    // Corner centres with the directions to the corner's start and end edges.
+    for (cx, cy, ax, ay, bx, by) in [(x + w - r, y + r, 0., -1., 1., 0.), (x + w - r, y + h - r, 1., 0., 0., 1.), (x + r, y + h - r, 0., 1., -1., 0.), (x + r, y + r, -1., 0., 0., -1.)] {
+        for k in 0..=N {
+            let t = std::f32::consts::FRAC_PI_2 * k as f32 / N as f32;
+            let (u, v) = (t.cos().max(0.).sqrt() * r, t.sin().max(0.).sqrt() * r);
+            out.push(point(px(cx + u * ax + v * bx), px(cy + u * ay + v * by)));
+        }
+    }
+    out
 }
 
-/// The outside of `b`'s four continuous corners, in `color`: rounds anything
-/// painted below it on a plain background.
-pub fn paint_corner_mask(b: Bounds<Pixels>, radius: f32, color: Hsla, window: &mut Window) {
-    let x = f32::from(b.left()); let y = f32::from(b.top());
-    let w = f32::from(b.size.width); let h = f32::from(b.size.height);
-    let r = radius.min(w / 2.).min(h / 2.);
-    if r <= 0. { return }
-    let mut pb = PathBuilder::fill();
-    for (sx, sy, ux, uy, vx, vy) in [
-        (x + w - r, y, 1., 0., 0., 1.),
-        (x + w, y + h - r, 0., 1., -1., 0.),
-        (x + r, y + h, -1., 0., 0., -1.),
-        (x, y + r, 0., -1., 1., 0.),
-    ] {
-        let q = |u: f32, v: f32| point(px(sx + r * (u * ux + v * vx)), px(sy + r * (u * uy + v * vy)));
-        pb.move_to(q(0., 0.));
-        pb.line_to(q(1., 0.));
-        pb.line_to(q(1., 1.));
-        pb.cubic_bezier_to(q(std::f32::consts::FRAC_1_SQRT_2, 0.2928932), q(1., 0.7928932), q(1., 0.5857864));
-        pb.cubic_bezier_to(q(0., 0.), q(0.4142136, 0.), q(0.2071068, 0.));
-        pb.close();
-    }
-    if let Ok(path) = pb.build() { window.paint_path(path, color); }
+fn squircle_path(b: Bounds<Pixels>, radius: f32, i: f32, mut pb: PathBuilder) -> Option<Path<Pixels>> {
+    // lyon panics on a collapsed outline (a box not laid out yet).
+    if f32::from(b.size.width) <= 2. * i + 1. || f32::from(b.size.height) <= 2. * i + 1. || radius <= i { return None }
+    let pts = squircle_points(b, radius, i);
+    pb.move_to(pts[0]);
+    for p in &pts[1..] { pb.line_to(*p); }
+    pb.close();
+    pb.build().ok()
+}
+
+/// A squircle-cornered fill (see `squircle_points`).
+pub fn squircle_surface(radius: f32, color: Hsla) -> Div {
+    div().relative().child(canvas(|b, _, _| b, move |_, b, window, _| {
+        if let Some(p) = squircle_path(b, radius, 0., PathBuilder::fill()) { window.paint_path(p, color); }
+    }).absolute().inset_0())
+}
+
+/// A `width` line along the inside of the squircle edge.
+pub fn squircle_outline(radius: f32, width: f32, color: Hsla) -> impl IntoElement {
+    canvas(|b, _, _| b, move |_, b, window, _| {
+        if let Some(p) = squircle_path(b, radius, width / 2., PathBuilder::stroke(px(width))) { window.paint_path(p, color); }
+    }).absolute().inset_0()
 }
 
 /// A capsule filled to `fraction` from the left, its edge a moving wave (the
@@ -869,8 +882,6 @@ pub fn wave_fill(fraction: f32, color: Hsla) -> impl IntoElement {
         if let Ok(path) = path.build() { window.paint_path(path, color); }
     }).absolute().inset_0()
 }
-
-pub fn continuous_page(radius: f32) -> Div { continuous_surface(radius, Theme::bg_body()) }
 
 pub fn continuous_surface(radius: f32, color: Hsla) -> Div {
     div().relative().child(canvas(|bounds, _, _| bounds, move |_, bounds, window, _| {

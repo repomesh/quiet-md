@@ -259,8 +259,9 @@ pub fn start(window: &mut Window, cx: &mut App) {
                 cx.update(|cx| {
                     let handle = cx.windows().into_iter().find_map(|w| w.downcast::<crate::app::Workspace>()).unwrap();
                     handle.update(cx, |ws, window, cx| match paths {
-                        Some(p) if drop => { FILE_DRAG.lock().unwrap().take(); ws.file_drag_at(at, p.clone(), cx); ws.file_drop_paths(p, window, cx); }
-                        Some(p) => ws.file_drag_at(at, p, cx),
+                        // Over the sidebar the tree takes it; otherwise the page.
+                        Some(p) if drop => { FILE_DRAG.lock().unwrap().take(); if ws.sidebar_drop_at(at, false, cx) { ws.sidebar_files_dropped(p, cx); } else { ws.file_drag_at(at, p.clone(), cx); ws.file_drop_paths(p, window, cx); } }
+                        Some(p) => { if !ws.sidebar_drop_at(at, false, cx) { ws.file_drag_at(at, p, cx); } }
                         None => cx.notify(),
                     }).unwrap();
                 }).unwrap();

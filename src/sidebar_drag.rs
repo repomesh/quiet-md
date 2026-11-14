@@ -288,8 +288,33 @@ impl Workspace {
         d.index = index; d.depth = depth; d.parent = parent;
     }
 
+    /// Where something dragged in from outside the tree lands at `at`: into the
+    /// folder row under it, or a slot between rows (as a row being moved gets),
+    /// beside the row below it. `local`: a 本机文件 row, which lands only on the
+    /// tree, not back in its own section.
+    pub(crate) fn sidebar_target(&self, at: Point<Pixels>, local: bool) -> Option<crate::sidebar_drop::SidebarDropAt> {
+        use crate::sidebar_drop::SidebarDropAt;
+        if !self.list_scroll.bounds().contains(&at) { return None; }
+        let Some(b) = self.folder_drag.bounds.get().filter(|_| !self.folded[1]) else { return (!local).then(SidebarDropAt::top) };
+        let rows = self.drag_rows();
+        let y = f32::from(at.y - b.top());
+        // Below the tree: the end of 我的文档 (a 本机文件 row over its own section: nowhere).
+        if y > (rows.len() + 1) as f32 * PITCH + 6. { return (!local).then_some(SidebarDropAt { parent: None, slot: Some((rows.len(), 0)), before: None }); }
+        // Rows where they stand with the open slot, as for a row being moved: the hit stays put while they make room.
+        let cur = self.sidebar_drop.as_ref().and_then(|t| t.slot).map(|s| s.0);
+        let top_of = |i: usize| (i + usize::from(cur.is_some_and(|c| i >= c))) as f32 * PITCH;
+        if let Some((_, r)) = rows.iter().enumerate().find(|(i, r)| r.entry.meta.folder.is_some() && y > top_of(*i) + 5. && y < top_of(*i) + 26.) {
+            return Some(SidebarDropAt { parent: Some(r.entry.id.clone()), slot: None, before: None });
+        }
+        let index = rows.iter().enumerate().filter(|(i, _)| y > top_of(*i) + 15.).count();
+        Some(match rows.get(index) {
+            Some(r) => SidebarDropAt { parent: r.entry.meta.parent.clone(), slot: Some((index, r.depth)), before: Some(r.entry.id.clone()) },
+            None => SidebarDropAt { parent: None, slot: Some((index, 0)), before: None },
+        })
+    }
+
     pub(crate) fn folder_drop_target(&self, id: &str) -> bool {
-        self.folder_drag.active.as_ref().is_some_and(|d| {
+        self.sidebar_drop.as_ref().is_some_and(|t| t.parent.as_deref() == Some(id)) || self.folder_drag.active.as_ref().is_some_and(|d| {
             let b = self.list_scroll.bounds();
             d.started && d.parent.as_deref() == Some(id)
                 && d.at.x >= b.left() && d.at.x <= b.right() && d.at.y >= b.top() && d.at.y <= b.bottom()
@@ -428,7 +453,8 @@ impl Workspace {
         let rows = self.drag_rows();
         let width = self.sidebar_w(window) - 2. * crate::sidebar::SB_X;
         let active = self.folder_drag.active.as_ref().filter(|d| d.started);
-        let slot = active.map(|d| (d.index, d.depth));
+        // A row being moved, or something dragged in from outside, opens a slot.
+        let slot = active.map(|d| (d.index, d.depth)).or_else(|| self.sidebar_drop.as_ref().and_then(|t| t.slot));
         let dragged = active.map(|d| d.id.clone());
         let dwell = active.and_then(|d| d.hover.as_ref()).filter(|(id, _)| !self.expanded.contains(id))
             .map(|(id, t)| (id.clone(), (t.elapsed().as_secs_f32() / DWELL).min(1.)));

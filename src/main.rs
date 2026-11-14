@@ -46,6 +46,7 @@ mod search;
 mod sidebar;
 mod local_files;
 mod sidebar_drag;
+mod sidebar_drop;
 mod home_folder;
 mod folders;
 mod file_history;
@@ -76,6 +77,12 @@ fn set_app_icon() {
     use objc::runtime::Object;
     let png = include_bytes!("../assets/branding/app-icon.png");
     unsafe {
+        // A bundle with its own icon keeps it (the preview's has a dev ribbon);
+        // only a bare binary (`cargo run`) borrows the app icon.
+        let bundle: *mut Object = msg_send![class!(NSBundle), mainBundle];
+        let key: *mut Object = msg_send![class!(NSString), stringWithUTF8String: c"CFBundleIconFile".as_ptr()];
+        let own: *mut Object = msg_send![bundle, objectForInfoDictionaryKey: key];
+        if !own.is_null() { return }
         let data: *mut Object = msg_send![class!(NSData), dataWithBytes:png.as_ptr() length:png.len()];
         let image: *mut Object = msg_send![class!(NSImage), alloc];
         let image: *mut Object = msg_send![image, initWithData:data];
@@ -106,7 +113,7 @@ pub(crate) fn main_window_options(scripted: bool, at: Option<Bounds<Pixels>>, cx
             appears_transparent: cfg!(any(target_os = "macos", target_os = "windows")),
             traffic_light_position: Some(point(px(20.), px(app::HEADER_H / 2. - 7.))),
         }),
-        window_min_size: Some(size(px(480.), px(480.))),
+        window_min_size: Some(size(px(app::DOC_MIN_W), px(480.))),
         focus: !scripted,
         ..Default::default()
     }
